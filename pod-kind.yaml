@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cloudtest
+  labels:
+    component: cloud-test
+spec:
+  containers:
+    - name: cloudtest
+      image: vishal210893/cloudtest:3
+      ports:
+        - containerPort: 9015
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-test-node-port
+spec:
+  type: NodePort
+  ports:
+    - port: 8007
+      targetPort: 9015
+      nodePort: 30888
+  selector:
+    component: cloud-test
+
+
+
+
+
+
+
+
+
+#  kubectl create clusterrolebinding add-on-cluster-admin \
+#  --clusterrole=cluster-admin \
+#  --serviceaccount=default:default
+
+# kubectl delete clusterrolebinding add-on-cluster-admin

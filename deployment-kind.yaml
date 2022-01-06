@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudtest-deployment
+  labels:
+    canbeanykey: canbeanyvalue
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: cloud-test
+  template:
+    metadata:
+      labels:
+        component: cloud-test
+    spec:
+      serviceAccountName: my-serviceaccount
+      containers:
+        - name: cloudtest
+          image: vishal210893/cloudtest:3
+          ports:
+            - containerPort: 9015
+          livenessProbe:
+            httpGet:
+              path: /cloudtest/heartbeat
+              port: 9015
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+
+---
+
+# CLUSTER-IP.YAML
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtest-cluster-ip
+spec:
+  type: ClusterIP
+  selector:
+    component: cloud-test
+  ports:
+    - port: 9015
+      targetPort: 9015
+
+---
+
+# ROLE
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: pod-and-pod-logs-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+
+---
+
+#ROLE BINDING
+apiVersion: rbac.authorization.k8s.io/v1
+# This role binding allows "dave" to read secrets in the "development" namespace.
+# You need to already have a ClusterRole named "secret-reader".
+kind: RoleBinding
+metadata:
+  name: read-pod
+  #
+  # The namespace of the RoleBinding determines where the permissions are granted.
+  # This only grants permissions within the "development" namespace.
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: my-serviceaccount
+    namespace: default
+roleRef:
+  kind: Role
+  name: pod-and-pod-logs-reader
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+#SERVICE ACCOUNT
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-serviceaccount
+  namespace: default
+
+---
+#ClusterRole + ClusterRoleBinding = All Namespaces
+#ClusterRole + RoleBindings = Particular Namespaces
+#Role + RoleBinding = Same Namespace
+
+---
+#apiVersion: v1
+#kind: Service
+#metadata:
+#  name: cloud-test-node-port
+#spec:
+#  type: NodePort
+#  ports:
+#    - port: 8007
+#      targetPort: 9015
+#      nodePort: 30888
+#  selector:
+#    component: cloud-test

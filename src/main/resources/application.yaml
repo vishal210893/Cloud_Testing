@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: Cloud Test
+
+server:
+  port: 9015
+  servlet:
+    context-path: /cloudtest
+  ssl:
+    enabled: false
+  tomcat:
+    max-connections: 50
+    connection-timeout: 10s
+    threads:
+      max: 50
