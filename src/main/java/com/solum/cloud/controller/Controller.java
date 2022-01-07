@@ -52,6 +52,7 @@ public class Controller {
         Configuration.setDefaultApiClient(client);
         CoreV1Api api = new CoreV1Api();
         V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, null, null, null, 20, null);
+        //final V1PodList aDefault = api.listNamespacedPod("default", null, null, null, null, null, null, null, null, 20, null);
         ArrayList<String> ar = new ArrayList<>();
         for (V1Pod item : list.getItems()) {
             ar.add(item.getMetadata().getName());
