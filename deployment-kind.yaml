@@ -90,9 +90,13 @@ metadata:
   namespace: default
 
 ---
-#ClusterRole + ClusterRoleBinding = All Namespaces
-#ClusterRole + RoleBindings = Particular Namespaces
-#Role + RoleBinding = Same Namespace
+# Roles: definition of the permissions for each Kubernetes resource type
+# Subjects: users (human or machine users) or groups of users
+# RoleBindings: definition of what Subjects have which Roles
+
+# ClusterRole + ClusterRoleBinding = All Namespaces
+# ClusterRole + RoleBindings = Particular Namespaces
+# Role + RoleBinding = Same Namespace
 
 ---
 #apiVersion: v1
