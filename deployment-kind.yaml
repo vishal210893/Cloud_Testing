@@ -51,7 +51,6 @@ spec:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  namespace: default
   name: pod-and-pod-logs-reader
 rules:
   - apiGroups: [""]
@@ -67,7 +66,9 @@ metadata:
   name: read-pod
   # The namespace of the RoleBinding determines where the permissions are granted.
   # This only grants permissions within the "default" namespace.
-  namespace: default
+  # namespace: default
+
+  # NOTE : For ClusterRole and ClusterRoleBinding "namespace" is not required as it will be for all namespace
 subjects:
   - kind: ServiceAccount
     name: cloudtest-serviceaccount
