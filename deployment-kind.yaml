@@ -106,6 +106,12 @@ spec:
     component: cloud-test
 
 ---
+
+
+
+
+
+
 # Roles: definition of the permissions for each Kubernetes resource type
 # Subjects: users (human or machine users) or groups of users
 # RoleBindings: definition of what Subjects have which Roles
@@ -113,3 +119,24 @@ spec:
 # ClusterRole + ClusterRoleBinding = All Namespaces
 # ClusterRole + RoleBindings = Particular Namespaces
 # Role + RoleBinding = Same Namespace
+
+#  A default service account is automatically created for each namespace.
+
+#  kubectl get serviceaccount
+#  NAME SECRETS AGE
+#  default 1 1d
+#
+#  Service accounts can be added when required. Each pod is associated with exactly one service account but multiple pods can use the same service account.
+#  A pod can only use one service account from the same namespace.
+#  Service account are assigned to a pod by specifying the account’s name in the pod manifest. If you don’t assign it explicitly the pod will use the default service account.
+#  The default permissions for a service account don't allow it to list or modify any resources. The default service account isn't allowed to view cluster state let alone modify it in any way.
+#  By default, the default service account in a namespace has no permissions other than those of an unauthenticated user.
+
+#  Therefore pods by default can’t even view cluster state. Its up to you to grant them appropriate permissions to do that.
+#
+#  kubectl exec -it test -n foo sh / # curl localhost:8001/api/v1/namespaces/foo/services { "kind": "Status", "apiVersion": "v1", "metadata": {
+#}, "status": "Failure", "message": "services is forbidden: User "system:serviceaccount:foo:default" cannot list resource "services" in API group "" in the namespace "foo"", "reason": "Forbidden", "details": { "kind": "services" }, "code": 403
+
+#  as can be seen above the default service account cannot list services
+#
+#  but when given proper role and role binding like above
