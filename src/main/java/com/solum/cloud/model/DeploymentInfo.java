@@ -1,26 +1,33 @@
 package com.solum.cloud.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 
 @Getter
 @Setter
 @Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class DeploymentInfo {
 
-    String name;
+    private String name;
 
-    String imageName;
+    private String imageName;
 
-    int minPods;
+    private String containerName;
 
-    int maxPods;
+    private HashMap<String, DeploymentResources> resources;
 
-    int replicas;
+    private int minPods;
 
-    ArrayList<PodsInfo> details;
+    private int maxPods;
+
+    private int replicas;
+
+    private ArrayList<PodsInfo> details;
 
 }

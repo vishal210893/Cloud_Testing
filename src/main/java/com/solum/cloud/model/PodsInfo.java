@@ -2,27 +2,25 @@ package com.solum.cloud.model;
 
 import lombok.Getter;
 import lombok.Setter;
-import lombok.ToString;
 
 import java.time.LocalDateTime;
 
 @Getter
 @Setter
-@ToString
 public class PodsInfo {
 
-    String instanceId;
+    private String instanceId;
 
-    LocalDateTime creationTime;
+    private LocalDateTime creationTime;
 
-    String status;
+    private String status;
 
-    String cpu;
+    private String cpu;
 
-    String memory;
+    private String memory;
 
-    int restart;
+    private int restart;
 
-    String nodeName;
+    private String nodeName;
 
 }

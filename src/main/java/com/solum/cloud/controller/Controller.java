@@ -3,6 +3,7 @@ package com.solum.cloud.controller;
 import com.google.gson.reflect.TypeToken;
 import com.solum.cloud.model.DeploymentInfo;
 import com.solum.cloud.model.DeploymentInitial;
+import com.solum.cloud.model.DeploymentResources;
 import com.solum.cloud.model.PodsInfo;
 import io.kubernetes.client.Metrics;
 import io.kubernetes.client.custom.*;
@@ -19,7 +20,7 @@ import io.kubernetes.client.util.KubeConfig;
 import io.kubernetes.client.util.Watch;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
-import org.springframework.http.HttpStatus;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,95 +36,109 @@ public class Controller {
     private static final String KUBE_CONFIG_PATH = "C:/Users/SolumTravel/Desktop/common00config";
 
     @GetMapping("/getpodsinfo")
-    public ResponseEntity<ArrayList<Object>> printPodName() throws Exception {
-        ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
-        Configuration.setDefaultApiClient(client);
-        Metrics metrics = new Metrics(client);
-        CoreV1Api api = new CoreV1Api();
+    public ResponseEntity<Object> printPodName() {
+        try {
+            ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            Configuration.setDefaultApiClient(client);
+            Metrics metrics = new Metrics(client);
+            CoreV1Api api = new CoreV1Api();
 
-        DeploymentInfo.DeploymentInfoBuilder api_service = DeploymentInfo.builder().name("Api Service").details(new ArrayList<>());
-        DeploymentInfo.DeploymentInfoBuilder dashboard = DeploymentInfo.builder().name("Dashboard").details(new ArrayList<>());
-        DeploymentInfo.DeploymentInfoBuilder image_generator = DeploymentInfo.builder().name("Image Generator").details(new ArrayList<>());
-        DeploymentInfo.DeploymentInfoBuilder lbs = DeploymentInfo.builder().name("Lbs").details(new ArrayList<>());
-        DeploymentInfo.DeploymentInfoBuilder ld = DeploymentInfo.builder().name("Ld").details(new ArrayList<>());
-        DeploymentInfo.DeploymentInfoBuilder inbound = DeploymentInfo.builder().name("Inbound").details(new ArrayList<>());
-        DeploymentInfo.DeploymentInfoBuilder outbound = DeploymentInfo.builder().name("Outbound").details(new ArrayList<>());
-        DeploymentInfo.DeploymentInfoBuilder realTime = DeploymentInfo.builder().name("RealTime").details(new ArrayList<>());
-        DeploymentInfo.DeploymentInfoBuilder scheduler = DeploymentInfo.builder().name("Scheduler").details(new ArrayList<>());
+            DeploymentInfo.DeploymentInfoBuilder api_service = DeploymentInfo.builder().name("Api Service").details(new ArrayList<>()).resources(new HashMap<>());
+            DeploymentInfo.DeploymentInfoBuilder dashboard = DeploymentInfo.builder().name("Dashboard").details(new ArrayList<>()).resources(new HashMap<>());
+            DeploymentInfo.DeploymentInfoBuilder image_generator = DeploymentInfo.builder().name("Image Generator").details(new ArrayList<>()).resources(new HashMap<>());
+            DeploymentInfo.DeploymentInfoBuilder lbs = DeploymentInfo.builder().name("Lbs").details(new ArrayList<>()).resources(new HashMap<>());
+            DeploymentInfo.DeploymentInfoBuilder ld = DeploymentInfo.builder().name("Ld").details(new ArrayList<>()).resources(new HashMap<>());
+            DeploymentInfo.DeploymentInfoBuilder inbound = DeploymentInfo.builder().name("Inbound").details(new ArrayList<>()).resources(new HashMap<>());
+            DeploymentInfo.DeploymentInfoBuilder outbound = DeploymentInfo.builder().name("Outbound").details(new ArrayList<>()).resources(new HashMap<>());
+            DeploymentInfo.DeploymentInfoBuilder realTime = DeploymentInfo.builder().name("RealTime").details(new ArrayList<>()).resources(new HashMap<>());
+            DeploymentInfo.DeploymentInfoBuilder scheduler = DeploymentInfo.builder().name("Scheduler").details(new ArrayList<>()).resources(new HashMap<>());
 
 
-        V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, null, null, null, 20, null);
-        for (V1Pod item : list.getItems()) {
-            final V1ObjectMeta metadata = item.getMetadata();
-            final String podsFullName = metadata.getName();
-            final String podName = podsFullName.substring(0, podsFullName.indexOf("-"));
-            if (!EnumUtils.isValidEnum(DeploymentInitial.class, podName.toUpperCase()) || podsFullName.contains("dashboard-metrics")) {
-                continue;
+            V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, null, null, null, 20, null);
+            for (V1Pod item : list.getItems()) {
+                final V1ObjectMeta metadata = item.getMetadata();
+                final String podsFullName = metadata.getName();
+                final String podName = podsFullName.substring(0, podsFullName.indexOf("-"));
+                if (!EnumUtils.isValidEnum(DeploymentInitial.class, podName.toUpperCase()) || podsFullName.contains("dashboard-metrics")) {
+                    continue;
+                }
+                final DeploymentInitial deploymentInitial = DeploymentInitial.valueOf(podName.toUpperCase());
+                PodsInfo podsInfo;
+                switch (deploymentInitial) {
+                    case APISERVICE:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(api_service, item, podsInfo);
+                        break;
+                    case DASHBOARD:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(dashboard, item, podsInfo);
+                        break;
+                    case IMGGENERATOR:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(image_generator, item, podsInfo);
+                        break;
+                    case INBOUND:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(inbound, item, podsInfo);
+                        break;
+                    case LBS:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(lbs, item, podsInfo);
+                        break;
+                    case LD:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(ld, item, podsInfo);
+                        break;
+                    case OUTBOUND:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(outbound, item, podsInfo);
+                        break;
+                    case REALTIME:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(realTime, item, podsInfo);
+                        break;
+                    case SCHEDULER:
+                        podsInfo = getPodsInfo(metrics, item, podsFullName);
+                        createDeploymentInfo(scheduler, item, podsInfo);
+                        break;
+                    case FLUENTD:
+                        break;
+                }
             }
-            final DeploymentInitial deploymentInitial = DeploymentInitial.valueOf(podName.toUpperCase());
-            PodsInfo podsInfo;
-            switch (deploymentInitial) {
-                case APISERVICE:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    api_service.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    api_service.build().getDetails().add(podsInfo);
-                    break;
-                case DASHBOARD:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    dashboard.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    dashboard.build().getDetails().add(podsInfo);
-                    break;
-                case IMGGENERATOR:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    image_generator.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    image_generator.build().getDetails().add(podsInfo);
-                    break;
-                case INBOUND:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    inbound.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    inbound.build().getDetails().add(podsInfo);
-                    break;
-                case LBS:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    lbs.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    lbs.build().getDetails().add(podsInfo);
-                    break;
-                case LD:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    ld.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    ld.build().getDetails().add(podsInfo);
-                    break;
-                case OUTBOUND:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    outbound.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    outbound.build().getDetails().add(podsInfo);
-                    break;
-                case REALTIME:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    realTime.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    realTime.build().getDetails().add(podsInfo);
-                    break;
-                case SCHEDULER:
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    scheduler.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-                    scheduler.build().getDetails().add(podsInfo);
-                    break;
-                case FLUENTD:
-                    break;
-            }
+
+            ArrayList<Object> environmentMsInfo = new ArrayList<>();
+            environmentMsInfo.add(api_service.replicas(api_service.build().getDetails().size()).build());
+            environmentMsInfo.add(dashboard.replicas(dashboard.build().getDetails().size()).build());
+            environmentMsInfo.add(image_generator.replicas(image_generator.build().getDetails().size()).build());
+            environmentMsInfo.add(lbs.replicas(lbs.build().getDetails().size()).build());
+            environmentMsInfo.add(ld.replicas(ld.build().getDetails().size()).build());
+            environmentMsInfo.add(inbound.replicas(inbound.build().getDetails().size()).build());
+            environmentMsInfo.add(outbound.replicas(outbound.build().getDetails().size()).build());
+            environmentMsInfo.add(realTime.replicas(realTime.build().getDetails().size()).build());
+            environmentMsInfo.add(scheduler.replicas(scheduler.build().getDetails().size()).build());
+            return ResponseEntity.ok().body(environmentMsInfo);
+        } catch (Exception e) {
+            return ResponseEntity.ok().body(ExceptionUtils.getStackTrace(e));
         }
+    }
 
-        ArrayList<Object> environmentMsInfo = new ArrayList<>();
-        environmentMsInfo.add(api_service.replicas(api_service.build().getDetails().size()).build());
-        environmentMsInfo.add(dashboard.replicas(dashboard.build().getDetails().size()).build());
-        environmentMsInfo.add(image_generator.replicas(image_generator.build().getDetails().size()).build());
-        environmentMsInfo.add(lbs.replicas(lbs.build().getDetails().size()).build());
-        environmentMsInfo.add(ld.replicas(ld.build().getDetails().size()).build());
-        environmentMsInfo.add(inbound.replicas(inbound.build().getDetails().size()).build());
-        environmentMsInfo.add(outbound.replicas(outbound.build().getDetails().size()).build());
-        environmentMsInfo.add(realTime.replicas(realTime.build().getDetails().size()).build());
-        environmentMsInfo.add(scheduler.replicas(scheduler.build().getDetails().size()).build());
-        return ResponseEntity.ok().body(environmentMsInfo);
+    private void createDeploymentInfo(DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder, V1Pod item, PodsInfo podsInfo) {
+        deploymentInfoBuilder.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
+        deploymentInfoBuilder.containerName(item.getStatus().getContainerStatuses().get(0).getName());
+        try {
+            DeploymentResources limits = new DeploymentResources();
+            limits.setCpu(item.getSpec().getContainers().get(0).getResources().getLimits().get("cpu").toSuffixedString());
+            limits.setMemory(item.getSpec().getContainers().get(0).getResources().getLimits().get("memory").toSuffixedString());
+            deploymentInfoBuilder.build().getResources().put("limits", limits);
+
+            DeploymentResources requests = new DeploymentResources();
+            requests.setCpu(item.getSpec().getContainers().get(0).getResources().getRequests().get("cpu").toSuffixedString());
+            requests.setMemory(item.getSpec().getContainers().get(0).getResources().getRequests().get("memory").toSuffixedString());
+            deploymentInfoBuilder.build().getResources().put("requests", requests);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+        deploymentInfoBuilder.build().getDetails().add(podsInfo);
     }
 
     private PodsInfo getPodsInfo(Metrics metrics, V1Pod item, String podsFullName) throws ApiException {
@@ -145,8 +160,8 @@ public class Controller {
                     continue;
                 }
                 for (ContainerMetrics container : podMetrics.getContainers()) {
-                    podsInfo.setCpu(container.getUsage().get("cpu").toString());
-                    podsInfo.setMemory(container.getUsage().get("memory").toString());
+                    podsInfo.setCpu(container.getUsage().get("cpu").toSuffixedString());
+                    podsInfo.setMemory(container.getUsage().get("memory").toSuffixedString());
                 }
             }
         }
@@ -194,12 +209,6 @@ public class Controller {
             log.error(e.getMessage(), e);
         }
         return ResponseEntity.ok().body(hm);
-    }
-
-    @GetMapping(value = "/heartbeat")
-    public ResponseEntity heartbeat() {
-        log.info("Heartbeat status 200 OK");
-        return new ResponseEntity(HttpStatus.OK);
     }
 
 }
