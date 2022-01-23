@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -118,35 +119,37 @@ public class Controller {
     }
 
     private void createDeploymentInfo(DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder, V1Pod item, PodsInfo podsInfo) {
-        deploymentInfoBuilder.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-        deploymentInfoBuilder.containerName(item.getStatus().getContainerStatuses().get(0).getName());
-        try {
-            DeploymentResources limits = new DeploymentResources();
-            limits.setCpu(item.getSpec().getContainers().get(0).getResources().getLimits().get("cpu").toSuffixedString());
-            limits.setMemory(item.getSpec().getContainers().get(0).getResources().getLimits().get("memory").toSuffixedString());
-            deploymentInfoBuilder.build().getResources().put("limits", limits);
+        if (!StringUtils.hasText(deploymentInfoBuilder.build().getContainerName())) {
+            deploymentInfoBuilder.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
+            deploymentInfoBuilder.containerName(item.getStatus().getContainerStatuses().get(0).getName());
+            try {
+                DeploymentResources limits = new DeploymentResources();
+                limits.setCpu(item.getSpec().getContainers().get(0).getResources().getLimits().get("cpu").toSuffixedString());
+                limits.setMemory(item.getSpec().getContainers().get(0).getResources().getLimits().get("memory").toSuffixedString());
+                deploymentInfoBuilder.build().getResources().put("limits", limits);
 
-            DeploymentResources requests = new DeploymentResources();
-            requests.setCpu(item.getSpec().getContainers().get(0).getResources().getRequests().get("cpu").toSuffixedString());
-            requests.setMemory(item.getSpec().getContainers().get(0).getResources().getRequests().get("memory").toSuffixedString());
-            deploymentInfoBuilder.build().getResources().put("requests", requests);
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
-            deploymentInfoBuilder.resources(null);
-        }
-        final V1HorizontalPodAutoscaler v1Hpa = getAutoScalingInfo(podsInfo);
-        if (v1Hpa != null) {
-            AutoScalingInfo autoScalingInfo = new AutoScalingInfo();
-            autoScalingInfo.setMinPods(v1Hpa.getSpec().getMinReplicas());
-            autoScalingInfo.setMaxPods(v1Hpa.getSpec().getMaxReplicas());
-            autoScalingInfo.setTargetCPUUtilizationPercentage(v1Hpa.getSpec().getTargetCPUUtilizationPercentage());
-            autoScalingInfo.setCurrentCPUUtilizationPercentage(v1Hpa.getStatus().getCurrentCPUUtilizationPercentage());
-            autoScalingInfo.setCurrentReplicas(v1Hpa.getStatus().getCurrentReplicas());
-            autoScalingInfo.setDesiredReplicas(v1Hpa.getStatus().getDesiredReplicas());
-            autoScalingInfo.setLastScaleTime(v1Hpa.getStatus().getLastScaleTime());
-            deploymentInfoBuilder.autoScalingInfo(autoScalingInfo);
-        } else {
-            deploymentInfoBuilder.autoScalingInfo(null);
+                DeploymentResources requests = new DeploymentResources();
+                requests.setCpu(item.getSpec().getContainers().get(0).getResources().getRequests().get("cpu").toSuffixedString());
+                requests.setMemory(item.getSpec().getContainers().get(0).getResources().getRequests().get("memory").toSuffixedString());
+                deploymentInfoBuilder.build().getResources().put("requests", requests);
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+                deploymentInfoBuilder.resources(null);
+            }
+            final V1HorizontalPodAutoscaler v1Hpa = getAutoScalingInfo(podsInfo);
+            if (v1Hpa != null) {
+                AutoScalingInfo autoScalingInfo = new AutoScalingInfo();
+                autoScalingInfo.setMinPods(v1Hpa.getSpec().getMinReplicas());
+                autoScalingInfo.setMaxPods(v1Hpa.getSpec().getMaxReplicas());
+                autoScalingInfo.setTargetCPUUtilizationPercentage(v1Hpa.getSpec().getTargetCPUUtilizationPercentage());
+                autoScalingInfo.setCurrentCPUUtilizationPercentage(v1Hpa.getStatus().getCurrentCPUUtilizationPercentage());
+                autoScalingInfo.setCurrentReplicas(v1Hpa.getStatus().getCurrentReplicas());
+                autoScalingInfo.setDesiredReplicas(v1Hpa.getStatus().getDesiredReplicas());
+                autoScalingInfo.setLastScaleTime(v1Hpa.getStatus().getLastScaleTime());
+                deploymentInfoBuilder.autoScalingInfo(autoScalingInfo);
+            } else {
+                deploymentInfoBuilder.autoScalingInfo(null);
+            }
         }
         deploymentInfoBuilder.build().getDetails().add(podsInfo);
     }
