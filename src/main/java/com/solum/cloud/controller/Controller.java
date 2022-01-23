@@ -65,38 +65,47 @@ public class Controller {
             switch (deploymentInitial) {
                 case APISERVICE:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    api_service.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     api_service.build().getDetails().add(podsInfo);
                     break;
                 case DASHBOARD:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    dashboard.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     dashboard.build().getDetails().add(podsInfo);
                     break;
                 case IMGGENERATOR:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    image_generator.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     image_generator.build().getDetails().add(podsInfo);
                     break;
                 case INBOUND:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    inbound.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     inbound.build().getDetails().add(podsInfo);
                     break;
                 case LBS:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    lbs.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     lbs.build().getDetails().add(podsInfo);
                     break;
                 case LD:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    ld.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     ld.build().getDetails().add(podsInfo);
                     break;
                 case OUTBOUND:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    outbound.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     outbound.build().getDetails().add(podsInfo);
                     break;
                 case REALTIME:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    realTime.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     realTime.build().getDetails().add(podsInfo);
                     break;
                 case SCHEDULER:
                     podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    scheduler.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
                     scheduler.build().getDetails().add(podsInfo);
                     break;
                 case FLUENTD:
@@ -122,6 +131,8 @@ public class Controller {
         podsInfo.setInstanceId(podsFullName);
         podsInfo.setStatus(item.getStatus().getPhase());
         podsInfo.setCreationTime(item.getMetadata().getCreationTimestamp().toLocalDateTime());
+        podsInfo.setRestart(item.getStatus().getContainerStatuses().get(0).getRestartCount());
+        podsInfo.setNodeName(item.getSpec().getNodeName());
         final PodMetricsList podMetricsList = metrics.getPodMetrics("default");
         podsInfo = getPodsMetrics(podMetricsList, podsInfo);
         return podsInfo;

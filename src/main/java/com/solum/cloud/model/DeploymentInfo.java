@@ -13,6 +13,8 @@ public class DeploymentInfo {
 
     String name;
 
+    String imageName;
+
     int minPods;
 
     int maxPods;

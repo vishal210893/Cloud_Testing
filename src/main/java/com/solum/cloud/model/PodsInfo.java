@@ -21,4 +21,8 @@ public class PodsInfo {
 
     String memory;
 
+    int restart;
+
+    String nodeName;
+
 }
