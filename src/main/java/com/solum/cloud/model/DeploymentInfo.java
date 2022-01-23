@@ -22,9 +22,7 @@ public class DeploymentInfo {
 
     private HashMap<String, DeploymentResources> resources;
 
-    private int minPods;
-
-    private int maxPods;
+    private AutoScalingInfo autoScalingInfo;
 
     private int replicas;
 

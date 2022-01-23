@@ -1,20 +1,15 @@
 package com.solum.cloud.controller;
 
 import com.google.gson.reflect.TypeToken;
-import com.solum.cloud.model.DeploymentInfo;
-import com.solum.cloud.model.DeploymentInitial;
-import com.solum.cloud.model.DeploymentResources;
-import com.solum.cloud.model.PodsInfo;
+import com.solum.cloud.model.*;
 import io.kubernetes.client.Metrics;
 import io.kubernetes.client.custom.*;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
+import io.kubernetes.client.openapi.apis.AutoscalingV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
-import io.kubernetes.client.openapi.models.V1Namespace;
-import io.kubernetes.client.openapi.models.V1ObjectMeta;
-import io.kubernetes.client.openapi.models.V1Pod;
-import io.kubernetes.client.openapi.models.V1PodList;
+import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.ClientBuilder;
 import io.kubernetes.client.util.KubeConfig;
 import io.kubernetes.client.util.Watch;
@@ -54,7 +49,7 @@ public class Controller {
             DeploymentInfo.DeploymentInfoBuilder scheduler = DeploymentInfo.builder().name("Scheduler").details(new ArrayList<>()).resources(new HashMap<>());
 
 
-            V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, null, null, null, 20, null);
+            V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
             for (V1Pod item : list.getItems()) {
                 final V1ObjectMeta metadata = item.getMetadata();
                 final String podsFullName = metadata.getName();
@@ -137,6 +132,21 @@ public class Controller {
             deploymentInfoBuilder.build().getResources().put("requests", requests);
         } catch (Exception e) {
             log.error(e.getMessage(), e);
+            deploymentInfoBuilder.resources(null);
+        }
+        final V1HorizontalPodAutoscaler v1Hpa = getAutoScalingInfo(podsInfo);
+        if (v1Hpa != null) {
+            AutoScalingInfo autoScalingInfo = new AutoScalingInfo();
+            autoScalingInfo.setMinPods(v1Hpa.getSpec().getMinReplicas());
+            autoScalingInfo.setMaxPods(v1Hpa.getSpec().getMaxReplicas());
+            autoScalingInfo.setTargetCPUUtilizationPercentage(v1Hpa.getSpec().getTargetCPUUtilizationPercentage());
+            autoScalingInfo.setCurrentCPUUtilizationPercentage(v1Hpa.getStatus().getCurrentCPUUtilizationPercentage());
+            autoScalingInfo.setCurrentReplicas(v1Hpa.getStatus().getCurrentReplicas());
+            autoScalingInfo.setDesiredReplicas(v1Hpa.getStatus().getDesiredReplicas());
+            autoScalingInfo.setLastScaleTime(v1Hpa.getStatus().getLastScaleTime());
+            deploymentInfoBuilder.autoScalingInfo(autoScalingInfo);
+        } else {
+            deploymentInfoBuilder.autoScalingInfo(null);
         }
         deploymentInfoBuilder.build().getDetails().add(podsInfo);
     }
@@ -168,6 +178,23 @@ public class Controller {
         return podsInfo;
     }
 
+    private V1HorizontalPodAutoscaler getAutoScalingInfo(PodsInfo podsInfo) {
+        try {
+            AutoscalingV1Api autoscalingV1Api = new AutoscalingV1Api();
+            final V1HorizontalPodAutoscalerList v1HorizontalPodAutoscalerList = autoscalingV1Api.listHorizontalPodAutoscalerForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
+            for (V1HorizontalPodAutoscaler v1HorizontalPodAutoscaler : v1HorizontalPodAutoscalerList.getItems()) {
+                final String hpaFullName = v1HorizontalPodAutoscaler.getMetadata().getName();
+                final String hpaDeploymentName = hpaFullName.substring(0, hpaFullName.lastIndexOf("-"));
+                if (podsInfo.getInstanceId().contains(hpaDeploymentName)) {
+                    return v1HorizontalPodAutoscaler;
+                }
+            }
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+        return null;
+    }
+
     @GetMapping("/node")
     public void printNodeDetails() throws Exception {
         ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
@@ -180,7 +207,7 @@ public class Controller {
                 System.out.println("------------------------------");
                 for (String key : item.getUsage().keySet()) {
                     System.out.println("\t" + key);
-                    System.out.println("\t" + item.getUsage().get(key));
+                    System.out.println("\t" + item.getUsage().get(key).toSuffixedString());
                 }
                 System.out.println();
             }
