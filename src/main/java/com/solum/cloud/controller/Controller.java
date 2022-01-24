@@ -48,17 +48,16 @@ public class Controller {
                 if (!EnumUtils.isValidEnum(DeploymentInitial.class, podName.toUpperCase()) || podsFullName.contains("dashboard-metrics")) {
                     continue;
                 }
-                PodsInfo podsInfo;
+                PodsInfo podsInfo = getPodsInfo(metrics, item, podsFullName);
+                final DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder;
                 if (deploymentInfoBuilderLinkedHashMap.containsKey(item.getStatus().getContainerStatuses().get(0).getName())) {
-                    final DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder = deploymentInfoBuilderLinkedHashMap.get(item.getStatus().getContainerStatuses().get(0).getName());
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    createDeploymentInfo(deploymentInfoBuilder, item, podsInfo);
+                    deploymentInfoBuilder = deploymentInfoBuilderLinkedHashMap.get(item.getStatus().getContainerStatuses().get(0).getName());
                 } else {
                     final String name = item.getStatus().getContainerStatuses().get(0).getName();
                     deploymentInfoBuilderLinkedHashMap.put(name, DeploymentInfo.builder().name(name).details(new ArrayList<>()).resources(new HashMap<>()));
-                    podsInfo = getPodsInfo(metrics, item, podsFullName);
-                    createDeploymentInfo(deploymentInfoBuilderLinkedHashMap.get(name), item, podsInfo);
+                    deploymentInfoBuilder = deploymentInfoBuilderLinkedHashMap.get(name);
                 }
+                createDeploymentInfo(deploymentInfoBuilder, item, podsInfo);
             }
 
             ArrayList<Object> environmentMsInfo = new ArrayList<>();
