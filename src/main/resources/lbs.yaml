@@ -82,10 +82,7 @@ metadata:
   name: lbs-role
 rules:
   - apiGroups: [ "*" ]
-    resources: [ "pods", "services", "deployments", "nodes" ]
-    verbs: [ "get", "list" ]
-  - apiGroups: [ "autoscaling" ]
-    resources: [ "HorizontalPodAutoscaler" ]
+    resources: [ "*" ]
     verbs: [ "get", "list" ]
 
 ---

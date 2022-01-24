@@ -7,6 +7,7 @@ import io.kubernetes.client.custom.*;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
+import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.AutoscalingV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.*;
@@ -22,7 +23,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.FileReader;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 
 @Slf4j
 @RestController
@@ -193,4 +196,27 @@ public class Controller {
         return ResponseEntity.ok().body(hm);
     }
 
+    @GetMapping("/restartpod")
+    public void restartDeployment() {
+        try {
+            ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            client.setDebugging(true);
+            Configuration.setDefaultApiClient(client);
+            AppsV1Api appsV1Api = new AppsV1Api();
+            final V1DeploymentList v1DeploymentList = appsV1Api.listDeploymentForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
+            for (V1Deployment v1Deployment : v1DeploymentList.getItems()) {
+                if (v1Deployment.getMetadata().getName().equals("imggenerator-deployment")) {
+                    final V1Status v1Status = appsV1Api.deleteNamespacedDeployment("imggenerator-deployment", "default", "true", null, null, false, null, null);
+                    if (v1Status.getStatus().equals("Success")) {
+                        v1Deployment.getMetadata().setResourceVersion(null);
+                        final V1Deployment namespacedDeployment = appsV1Api.createNamespacedDeployment("default", v1Deployment, "true", null, "lbs api for font upload process");
+                        break;
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+    }
 }
