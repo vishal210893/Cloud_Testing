@@ -22,8 +22,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.FileReader;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.*;
 
 @Slf4j
 @RestController
@@ -39,16 +38,7 @@ public class Controller {
             Metrics metrics = new Metrics(client);
             CoreV1Api api = new CoreV1Api();
 
-            DeploymentInfo.DeploymentInfoBuilder api_service = DeploymentInfo.builder().name("Api Service").details(new ArrayList<>()).resources(new HashMap<>());
-            DeploymentInfo.DeploymentInfoBuilder dashboard = DeploymentInfo.builder().name("Dashboard").details(new ArrayList<>()).resources(new HashMap<>());
-            DeploymentInfo.DeploymentInfoBuilder image_generator = DeploymentInfo.builder().name("Image Generator").details(new ArrayList<>()).resources(new HashMap<>());
-            DeploymentInfo.DeploymentInfoBuilder lbs = DeploymentInfo.builder().name("Lbs").details(new ArrayList<>()).resources(new HashMap<>());
-            DeploymentInfo.DeploymentInfoBuilder ld = DeploymentInfo.builder().name("Ld").details(new ArrayList<>()).resources(new HashMap<>());
-            DeploymentInfo.DeploymentInfoBuilder inbound = DeploymentInfo.builder().name("Inbound").details(new ArrayList<>()).resources(new HashMap<>());
-            DeploymentInfo.DeploymentInfoBuilder outbound = DeploymentInfo.builder().name("Outbound").details(new ArrayList<>()).resources(new HashMap<>());
-            DeploymentInfo.DeploymentInfoBuilder realTime = DeploymentInfo.builder().name("RealTime").details(new ArrayList<>()).resources(new HashMap<>());
-            DeploymentInfo.DeploymentInfoBuilder scheduler = DeploymentInfo.builder().name("Scheduler").details(new ArrayList<>()).resources(new HashMap<>());
-
+            LinkedHashMap<String, DeploymentInfo.DeploymentInfoBuilder> deploymentInfoBuilderLinkedHashMap = new LinkedHashMap<>();
 
             V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
             for (V1Pod item : list.getItems()) {
@@ -58,60 +48,24 @@ public class Controller {
                 if (!EnumUtils.isValidEnum(DeploymentInitial.class, podName.toUpperCase()) || podsFullName.contains("dashboard-metrics")) {
                     continue;
                 }
-                final DeploymentInitial deploymentInitial = DeploymentInitial.valueOf(podName.toUpperCase());
                 PodsInfo podsInfo;
-                switch (deploymentInitial) {
-                    case APISERVICE:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(api_service, item, podsInfo);
-                        break;
-                    case DASHBOARD:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(dashboard, item, podsInfo);
-                        break;
-                    case IMGGENERATOR:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(image_generator, item, podsInfo);
-                        break;
-                    case INBOUND:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(inbound, item, podsInfo);
-                        break;
-                    case LBS:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(lbs, item, podsInfo);
-                        break;
-                    case LD:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(ld, item, podsInfo);
-                        break;
-                    case OUTBOUND:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(outbound, item, podsInfo);
-                        break;
-                    case REALTIME:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(realTime, item, podsInfo);
-                        break;
-                    case SCHEDULER:
-                        podsInfo = getPodsInfo(metrics, item, podsFullName);
-                        createDeploymentInfo(scheduler, item, podsInfo);
-                        break;
-                    case FLUENTD:
-                        break;
+                if (deploymentInfoBuilderLinkedHashMap.containsKey(item.getStatus().getContainerStatuses().get(0).getName())) {
+                    final DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder = deploymentInfoBuilderLinkedHashMap.get(item.getStatus().getContainerStatuses().get(0).getName());
+                    podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    createDeploymentInfo(deploymentInfoBuilder, item, podsInfo);
+                } else {
+                    final String name = item.getStatus().getContainerStatuses().get(0).getName();
+                    deploymentInfoBuilderLinkedHashMap.put(name, DeploymentInfo.builder().name(name).details(new ArrayList<>()).resources(new HashMap<>()));
+                    podsInfo = getPodsInfo(metrics, item, podsFullName);
+                    createDeploymentInfo(deploymentInfoBuilderLinkedHashMap.get(name), item, podsInfo);
                 }
             }
 
             ArrayList<Object> environmentMsInfo = new ArrayList<>();
-            environmentMsInfo.add(api_service.replicas(api_service.build().getDetails().size()).build());
-            environmentMsInfo.add(dashboard.replicas(dashboard.build().getDetails().size()).build());
-            environmentMsInfo.add(image_generator.replicas(image_generator.build().getDetails().size()).build());
-            environmentMsInfo.add(lbs.replicas(lbs.build().getDetails().size()).build());
-            environmentMsInfo.add(ld.replicas(ld.build().getDetails().size()).build());
-            environmentMsInfo.add(inbound.replicas(inbound.build().getDetails().size()).build());
-            environmentMsInfo.add(outbound.replicas(outbound.build().getDetails().size()).build());
-            environmentMsInfo.add(realTime.replicas(realTime.build().getDetails().size()).build());
-            environmentMsInfo.add(scheduler.replicas(scheduler.build().getDetails().size()).build());
+            deploymentInfoBuilderLinkedHashMap.forEach((k, v) -> {
+                environmentMsInfo.add(v.replicas(v.build().getDetails().size()).build());
+            });
+
             return ResponseEntity.ok().body(environmentMsInfo);
         } catch (Exception e) {
             return ResponseEntity.ok().body(ExceptionUtils.getStackTrace(e));
