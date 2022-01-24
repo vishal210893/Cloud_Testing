@@ -1,0 +1,118 @@
+# A. Basic items
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lbs-deployment
+
+# B. Deployment specification
+spec:
+  replicas: 1   # The number of replicas
+  selector:
+    matchLabels:
+      app: lbs   # template searching condition
+
+  # C. Pod template
+  template:
+    metadata:
+      labels:
+        app: lbs
+        env: stage
+    spec:
+      serviceAccountName: lbs-serviceaccount
+      containers:
+        - image: solumacrms.azurecr.io/multitenant_lbs_img:2388  # The path of container
+          name: lbs   # Container name
+          ports:
+            - containerPort: 8084   # Port number
+          livenessProbe:
+            httpGet:
+              path: /api/v1/heartbeat
+              port: 8084
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 5
+          env:
+            - name: release_date
+              value: "2022-01-21 23:11:05"
+            - name: debug_enable
+              value: "true"
+            - name: base_version_string
+              value: "1.0.5"
+            - name: version_info
+              value: "2388"
+            - name: JAVA_OPTS
+              value: "-XX:+DisableAttachMechanism -Xms700m -Xmx1024m"
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 2048M
+            limits:
+              cpu: 4000m
+              memory: 3072M
+
+          volumeMounts:
+            - name: config-volume
+              mountPath: /opt/aims/env
+      volumes:
+        - name: config-volume
+          configMap:
+            name: lbs-configmap
+      terminationGracePeriodSeconds: 70
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lbs-deployment
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8084
+  selector:
+    app: lbs
+
+---
+
+# ROLE
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lbs-role
+rules:
+  - apiGroups: [ "*" ]
+    resources: [ "pods", "services", "deployments", "nodes" ]
+    verbs: [ "get", "list" ]
+  - apiGroups: [ "autoscaling" ]
+    resources: [ "HorizontalPodAutoscaler" ]
+    verbs: [ "get", "list" ]
+
+---
+
+#ROLE BINDING
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lbs-rolebinding
+  # The namespace of the RoleBinding determines where the permissions are granted.
+  # This only grants permissions within the "default" namespace.
+  # namespace: default
+  # NOTE : For ClusterRole and ClusterRoleBinding "namespace" is not required as it will be for all namespace
+subjects:
+  - kind: ServiceAccount
+    name: lbs-serviceaccount
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: lbs-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+#SERVICE ACCOUNT
+apiVersion: au
+kind: ServiceAccount
+metadata:
+  name: lbs-serviceaccount
+  namespace: default

@@ -115,8 +115,7 @@ public class Controller {
         podsInfo.setRestart(item.getStatus().getContainerStatuses().get(0).getRestartCount());
         podsInfo.setNodeName(item.getSpec().getNodeName());
         final PodMetricsList podMetricsList = metrics.getPodMetrics("default");
-        podsInfo = getPodsMetrics(podMetricsList, podsInfo);
-        return podsInfo;
+        return getPodsMetrics(podMetricsList, podsInfo);
     }
 
     private PodsInfo getPodsMetrics(PodMetricsList podMetricsList, PodsInfo podsInfo) {

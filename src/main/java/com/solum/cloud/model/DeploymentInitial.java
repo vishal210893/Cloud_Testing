@@ -10,6 +10,7 @@ public enum DeploymentInitial {
     OUTBOUND,
     REALTIME,
     SCHEDULER,
-    FLUENTD;
+    FLUENTD,
+    ES;
 
 }
