@@ -17,6 +17,7 @@ import io.kubernetes.client.util.Watch;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,19 +32,23 @@ import java.util.LinkedHashMap;
 @RestController
 public class Controller {
 
-    private static final String KUBE_CONFIG_PATH = "C:/Users/SolumTravel/Desktop/common00config";
+    private static final String KUBE_CONFIG_PATH = "C:/Users/SolumTravel/Desktop/config";
 
     @GetMapping("/getpodsinfo")
     public ResponseEntity<Object> printPodName() {
         try {
             ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            client.setDebugging(true);
+            client.setConnectTimeout(300000);
+            client.setReadTimeout(300000);
+
             Configuration.setDefaultApiClient(client);
             Metrics metrics = new Metrics(client);
             CoreV1Api api = new CoreV1Api();
 
             LinkedHashMap<String, DeploymentInfo.DeploymentInfoBuilder> deploymentInfoBuilderLinkedHashMap = new LinkedHashMap<>();
 
-            V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
+            V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, "true", null, null, 600, null);
             for (V1Pod item : list.getItems()) {
                 final V1ObjectMeta metadata = item.getMetadata();
                 final String podsFullName = metadata.getName();
@@ -196,27 +201,32 @@ public class Controller {
         return ResponseEntity.ok().body(hm);
     }
 
-    @GetMapping("/restartpod")
-    public void restartDeployment() {
+    @GetMapping("/restartig")
+    public ResponseEntity<String> restartDeployment() {
         try {
             ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
             client.setDebugging(true);
-            Configuration.setDefaultApiClient(client);
+            //Configuration.setDefaultApiClient(client);
             AppsV1Api appsV1Api = new AppsV1Api();
             final V1DeploymentList v1DeploymentList = appsV1Api.listDeploymentForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
             for (V1Deployment v1Deployment : v1DeploymentList.getItems()) {
                 if (v1Deployment.getMetadata().getName().equals("imggenerator-deployment")) {
                     final V1Status v1Status = appsV1Api.deleteNamespacedDeployment("imggenerator-deployment", "default", "true", null, null, false, null, null);
                     if (v1Status.getStatus().equals("Success")) {
+                        log.info("Deployment {} deleted successfully", v1Deployment.getMetadata().getName());
                         v1Deployment.getMetadata().setResourceVersion(null);
-                        final V1Deployment namespacedDeployment = appsV1Api.createNamespacedDeployment("default", v1Deployment, "true", null, "lbs api for font upload process");
-                        break;
+                        final V1Deployment namespacedDeployment = appsV1Api.createNamespacedDeployment("default", v1Deployment, "true", null, "LBS api to restart IG for font upload process");
+                        log.info("New deployment {} created successfully, Deployment Info = \n", v1Deployment.getMetadata().getName(), namespacedDeployment.toString());
+                        return ResponseEntity.ok().body(namespacedDeployment.toString());
+                    } else {
+                        log.error("Deployment = {} failed to delete, Status = {}", v1Deployment.getMetadata().getName(), v1Status.getStatus());
                     }
                 }
             }
-
         } catch (Exception e) {
             log.error(e.getMessage(), e);
+            return new ResponseEntity<>(ExceptionUtils.getStackTrace(e), HttpStatus.INTERNAL_SERVER_ERROR);
         }
+        return new ResponseEntity<>("Failed to restart IG", HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }
