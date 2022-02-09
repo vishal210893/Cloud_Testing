@@ -121,85 +121,6 @@ public class Controller {
         }
     }
 
-    private void createDeploymentInfo(DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder, V1Pod item, PodsInfo podsInfo) {
-        if (!StringUtils.hasText(deploymentInfoBuilder.build().getContainerName())) {
-            deploymentInfoBuilder.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
-            deploymentInfoBuilder.containerName(item.getStatus().getContainerStatuses().get(0).getName());
-            try {
-                DeploymentResources limits = new DeploymentResources();
-                limits.setCpu(item.getSpec().getContainers().get(0).getResources().getLimits().get("cpu").toSuffixedString());
-                limits.setMemory(item.getSpec().getContainers().get(0).getResources().getLimits().get("memory").toSuffixedString() + "B");
-                deploymentInfoBuilder.build().getResources().put("limits", limits);
-
-                DeploymentResources requests = new DeploymentResources();
-                requests.setCpu(item.getSpec().getContainers().get(0).getResources().getRequests().get("cpu").toSuffixedString());
-                requests.setMemory(item.getSpec().getContainers().get(0).getResources().getRequests().get("memory").toSuffixedString() + "B");
-                deploymentInfoBuilder.build().getResources().put("requests", requests);
-            } catch (Exception e) {
-                log.error(e.getMessage(), e);
-                deploymentInfoBuilder.resources(null);
-            }
-            final V1HorizontalPodAutoscaler v1Hpa = getAutoScalingInfo(podsInfo);
-            if (v1Hpa != null) {
-                AutoScalingInfo autoScalingInfo = new AutoScalingInfo();
-                autoScalingInfo.setMinPods(v1Hpa.getSpec().getMinReplicas());
-                autoScalingInfo.setMaxPods(v1Hpa.getSpec().getMaxReplicas());
-                autoScalingInfo.setTargetCPUUtilizationPercentage(v1Hpa.getSpec().getTargetCPUUtilizationPercentage());
-                autoScalingInfo.setCurrentCPUUtilizationPercentage(v1Hpa.getStatus().getCurrentCPUUtilizationPercentage());
-                autoScalingInfo.setCurrentReplicas(v1Hpa.getStatus().getCurrentReplicas());
-                autoScalingInfo.setDesiredReplicas(v1Hpa.getStatus().getDesiredReplicas());
-                autoScalingInfo.setLastScaleTime(v1Hpa.getStatus().getLastScaleTime());
-                deploymentInfoBuilder.autoScalingInfo(autoScalingInfo);
-            } else {
-                deploymentInfoBuilder.autoScalingInfo(null);
-            }
-        }
-        deploymentInfoBuilder.build().getDetails().add(podsInfo);
-    }
-
-    private PodsInfo getPodsInfo(Metrics metrics, V1Pod item, String podsFullName) throws ApiException {
-        PodsInfo podsInfo = new PodsInfo();
-        podsInfo.setInstanceId(podsFullName);
-        podsInfo.setStatus(item.getStatus().getPhase());
-        podsInfo.setCreationTime(item.getMetadata().getCreationTimestamp().toLocalDateTime());
-        podsInfo.setRestart(item.getStatus().getContainerStatuses().get(0).getRestartCount());
-        podsInfo.setNodeName(item.getSpec().getNodeName());
-        final PodMetricsList podMetricsList = metrics.getPodMetrics(DEFAULT_NAMESPACE);
-        return getPodsMetrics(podMetricsList, podsInfo);
-    }
-
-    private PodsInfo getPodsMetrics(PodMetricsList podMetricsList, PodsInfo podsInfo) {
-        for (PodMetrics podMetrics : podMetricsList.getItems()) {
-            if (podsInfo.getInstanceId().equals(podMetrics.getMetadata().getName())) {
-                if (podMetrics.getContainers() == null) {
-                    continue;
-                }
-                for (ContainerMetrics container : podMetrics.getContainers()) {
-                    podsInfo.setCpu(container.getUsage().get("cpu").toSuffixedString());
-                    podsInfo.setMemory(DECIMAL_FORMAT.format(container.getUsage().get("memory").getNumber().doubleValue() / 1048576.0) + " MB");
-                }
-            }
-        }
-        return podsInfo;
-    }
-
-    private V1HorizontalPodAutoscaler getAutoScalingInfo(PodsInfo podsInfo) {
-        try {
-            AutoscalingV1Api autoscalingV1Api = new AutoscalingV1Api();
-            final V1HorizontalPodAutoscalerList v1HorizontalPodAutoscalerList = autoscalingV1Api.listHorizontalPodAutoscalerForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
-            for (V1HorizontalPodAutoscaler v1HorizontalPodAutoscaler : v1HorizontalPodAutoscalerList.getItems()) {
-                final String hpaFullName = v1HorizontalPodAutoscaler.getMetadata().getName();
-                final String hpaDeploymentName = hpaFullName.substring(0, hpaFullName.lastIndexOf("-"));
-                if (podsInfo.getInstanceId().contains(hpaDeploymentName)) {
-                    return v1HorizontalPodAutoscaler;
-                }
-            }
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
-        }
-        return null;
-    }
-
     @GetMapping("/restart/{service}")
     public ResponseEntity<String> restartDeployment(@PathVariable(name = "service") String serviceName) {
         try {
@@ -374,7 +295,6 @@ public class Controller {
         return new ResponseEntity<>("Failed to update deployment " + serviceName, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-
     @GetMapping(value = "/copy/log", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     public ResponseEntity<?> copylog(@RequestParam(name = "podName") String pod, @RequestParam(name = "srcPath", required = false) String srcPath) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
@@ -414,6 +334,87 @@ public class Controller {
             return new ResponseEntity<>(ExceptionUtils.getStackTrace(e), HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return new ResponseEntity<>("Failed to retrieve logs for pod " + pod, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+
+
+    private void createDeploymentInfo(DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder, V1Pod item, PodsInfo podsInfo) {
+        if (!StringUtils.hasText(deploymentInfoBuilder.build().getContainerName())) {
+            deploymentInfoBuilder.imageName(item.getStatus().getContainerStatuses().get(0).getImage());
+            deploymentInfoBuilder.containerName(item.getStatus().getContainerStatuses().get(0).getName());
+            try {
+                DeploymentResources limits = new DeploymentResources();
+                limits.setCpu(item.getSpec().getContainers().get(0).getResources().getLimits().get("cpu").toSuffixedString());
+                limits.setMemory(item.getSpec().getContainers().get(0).getResources().getLimits().get("memory").toSuffixedString() + "B");
+                deploymentInfoBuilder.build().getResources().put("limits", limits);
+
+                DeploymentResources requests = new DeploymentResources();
+                requests.setCpu(item.getSpec().getContainers().get(0).getResources().getRequests().get("cpu").toSuffixedString());
+                requests.setMemory(item.getSpec().getContainers().get(0).getResources().getRequests().get("memory").toSuffixedString() + "B");
+                deploymentInfoBuilder.build().getResources().put("requests", requests);
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+                deploymentInfoBuilder.resources(null);
+            }
+            final V1HorizontalPodAutoscaler v1Hpa = getAutoScalingInfo(podsInfo);
+            if (v1Hpa != null) {
+                AutoScalingInfo autoScalingInfo = new AutoScalingInfo();
+                autoScalingInfo.setMinPods(v1Hpa.getSpec().getMinReplicas());
+                autoScalingInfo.setMaxPods(v1Hpa.getSpec().getMaxReplicas());
+                autoScalingInfo.setTargetCPUUtilizationPercentage(v1Hpa.getSpec().getTargetCPUUtilizationPercentage());
+                autoScalingInfo.setCurrentCPUUtilizationPercentage(v1Hpa.getStatus().getCurrentCPUUtilizationPercentage());
+                autoScalingInfo.setCurrentReplicas(v1Hpa.getStatus().getCurrentReplicas());
+                autoScalingInfo.setDesiredReplicas(v1Hpa.getStatus().getDesiredReplicas());
+                autoScalingInfo.setLastScaleTime(v1Hpa.getStatus().getLastScaleTime());
+                deploymentInfoBuilder.autoScalingInfo(autoScalingInfo);
+            } else {
+                deploymentInfoBuilder.autoScalingInfo(null);
+            }
+        }
+        deploymentInfoBuilder.build().getDetails().add(podsInfo);
+    }
+
+    private PodsInfo getPodsInfo(Metrics metrics, V1Pod item, String podsFullName) throws ApiException {
+        PodsInfo podsInfo = new PodsInfo();
+        podsInfo.setInstanceId(podsFullName);
+        podsInfo.setStatus(item.getStatus().getPhase());
+        podsInfo.setCreationTime(item.getMetadata().getCreationTimestamp().toLocalDateTime());
+        podsInfo.setRestart(item.getStatus().getContainerStatuses().get(0).getRestartCount());
+        podsInfo.setNodeName(item.getSpec().getNodeName());
+        final PodMetricsList podMetricsList = metrics.getPodMetrics(DEFAULT_NAMESPACE);
+        return getPodsMetrics(podMetricsList, podsInfo);
+    }
+
+    private PodsInfo getPodsMetrics(PodMetricsList podMetricsList, PodsInfo podsInfo) {
+        for (PodMetrics podMetrics : podMetricsList.getItems()) {
+            if (podsInfo.getInstanceId().equals(podMetrics.getMetadata().getName())) {
+                if (podMetrics.getContainers() == null) {
+                    continue;
+                }
+                for (ContainerMetrics container : podMetrics.getContainers()) {
+                    podsInfo.setCpu(container.getUsage().get("cpu").toSuffixedString());
+                    podsInfo.setMemory(DECIMAL_FORMAT.format(container.getUsage().get("memory").getNumber().doubleValue() / 1048576.0) + " MB");
+                }
+            }
+        }
+        return podsInfo;
+    }
+
+    private V1HorizontalPodAutoscaler getAutoScalingInfo(PodsInfo podsInfo) {
+        try {
+            AutoscalingV1Api autoscalingV1Api = new AutoscalingV1Api();
+            final V1HorizontalPodAutoscalerList v1HorizontalPodAutoscalerList = autoscalingV1Api.listHorizontalPodAutoscalerForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
+            for (V1HorizontalPodAutoscaler v1HorizontalPodAutoscaler : v1HorizontalPodAutoscalerList.getItems()) {
+                final String hpaFullName = v1HorizontalPodAutoscaler.getMetadata().getName();
+                final String hpaDeploymentName = hpaFullName.substring(0, hpaFullName.lastIndexOf("-"));
+                if (podsInfo.getInstanceId().contains(hpaDeploymentName)) {
+                    return v1HorizontalPodAutoscaler;
+                }
+            }
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+        return null;
     }
 
     private boolean updateApiServiceYamlAndRestart(int latestTag) throws ApiException {
