@@ -357,28 +357,50 @@ public class Controller {
     }
 
     @GetMapping("/getNodeInfo")
-    public void printNodeDetails() throws Exception {
-        ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
-        Configuration.setDefaultApiClient(client);
-        CoreV1Api api = new CoreV1Api();
-        api.listNode(null, null, null, null, null, null, null, null, 600, null);
+    public ResponseEntity<?> printNodeDetails() {
         try {
-            Metrics metrics = new Metrics(client);
-            NodeMetricsList list = metrics.getNodeMetrics();
-            for (NodeMetrics item : list.getItems()) {
-                System.out.println(item.getMetadata().getName());
-                System.out.println("------------------------------");
-                for (String key : item.getUsage().keySet()) {
-                    System.out.println("\t" + key);
-                    System.out.println("\t" + item.getUsage().get(key).toSuffixedString());
+            ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            Configuration.setDefaultApiClient(client);
+            CoreV1Api api = new CoreV1Api();
+            final V1NodeList v1NodeList = api.listNode(null, null, null, null, null, null, null, null, 600, null);
+            ArrayList<NodeInfo> nodeInfoList = new ArrayList<>();
+            v1NodeList.getItems().forEach((node) -> {
+                NodeInfo nodeInfo = new NodeInfo();
+                nodeInfo.setNodeName(node.getMetadata().getName());
+                nodeInfo.setCreationTime(node.getMetadata().getCreationTimestamp().toLocalDateTime());
+                final Map<String, String> labels = node.getMetadata().getLabels();
+                if (!labels.isEmpty()) {
+                    nodeInfo.setClusterName(labels.get("kubernetes.azure.com/cluster"));
+                    nodeInfo.setInstanceType(labels.get("beta.kubernetes.io/instance-type"));
+                    nodeInfo.setRegion(labels.get("topology.kubernetes.io/region"));
                 }
-                System.out.println();
-            }
+                nodeInfo.setTotalImage(node.getStatus().getImages().size());
+                nodeInfo.setNodeSystemInfo(node.getStatus().getNodeInfo());
+                try {
+                    nodeCpuAndMemoryInfo(client, nodeInfo);
+                } catch (ApiException e) {
+                    log.error("Unable to get Node metrics");
+                }
+                nodeInfoList.add(nodeInfo);
+            });
+            return ResponseEntity.ok().body(nodeInfoList);
         } catch (Exception e) {
             log.error(e.getMessage(), e);
+            return new ResponseEntity<>("unable to get Node info \n" + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
+    private void nodeCpuAndMemoryInfo(ApiClient client, NodeInfo nodeInfo) throws ApiException {
+        Metrics metrics = new Metrics(client);
+        NodeMetricsList list = metrics.getNodeMetrics();
+        for (NodeMetrics nodeMetrics : list.getItems()) {
+            if (nodeInfo.getNodeName().equals(nodeMetrics.getMetadata().getName())) {
+                final Map<String, Quantity> usage = nodeMetrics.getUsage();
+                nodeInfo.setCpu(usage.get("cpu").toSuffixedString());
+                nodeInfo.setMemory(DECIMAL_FORMAT.format(usage.get("memory").getNumber().doubleValue() / 1048576.0) + " MB");
+            }
+        }
+    }
 
     private void createDeploymentInfo(DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder, V1Pod item, PodsInfo podsInfo) {
         if (!StringUtils.hasText(deploymentInfoBuilder.build().getContainerName())) {
