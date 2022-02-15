@@ -12,10 +12,7 @@ import com.azure.core.credential.TokenRequestContext;
 import com.solum.cloud.model.*;
 import io.kubernetes.client.Copy;
 import io.kubernetes.client.Metrics;
-import io.kubernetes.client.PodLogs;
-import io.kubernetes.client.custom.ContainerMetrics;
-import io.kubernetes.client.custom.PodMetrics;
-import io.kubernetes.client.custom.PodMetricsList;
+import io.kubernetes.client.custom.*;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
@@ -24,9 +21,7 @@ import io.kubernetes.client.openapi.apis.AutoscalingV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.ClientBuilder;
-import io.kubernetes.client.util.Config;
 import io.kubernetes.client.util.KubeConfig;
-import io.kubernetes.client.util.Streams;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Response;
@@ -36,20 +31,18 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.boot.web.client.RestTemplateBuilder;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
-import org.springframework.util.FastByteArrayOutputStream;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Mono;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.time.LocalDate;
@@ -121,11 +114,11 @@ public class Controller {
         }
     }
 
-    @GetMapping("/restart/{service}")
-    public ResponseEntity<String> restartDeployment(@PathVariable(name = "service") String serviceName) {
+    @GetMapping("/restart")
+    public ResponseEntity<String> restartDeployment(@RequestParam(name = "service") String serviceName) {
         try {
-            ApiClient client = Config.defaultClient();
-            client.setDebugging(true);
+            ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            //client.setDebugging(true);
             Configuration.setDefaultApiClient(client);
             AppsV1Api appsV1Api = new AppsV1Api();
             final V1DeploymentList v1DeploymentList = appsV1Api.listDeploymentForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
@@ -296,7 +289,7 @@ public class Controller {
     }
 
     @GetMapping(value = "/copy/log", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public ResponseEntity<?> copylog(@RequestParam(name = "podName") String pod, @RequestParam(name = "srcPath", required = false) String srcPath) {
+    public ResponseEntity<?> copylog(@RequestParam(name = "podName") String pod, @RequestParam(name = "srcPath") String srcPath) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
             Configuration.setDefaultApiClient(client);
@@ -336,6 +329,55 @@ public class Controller {
         return new ResponseEntity<>("Failed to retrieve logs for pod " + pod, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    @GetMapping(value = "/push/fileToPod", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> pushFile(@RequestParam(name = "podName") String pod,
+                                      @RequestParam(name = "srcPath") String srcPath,
+                                      @RequestParam(name = "css") MultipartFile xsl) {
+        try {
+            ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            Configuration.setDefaultApiClient(client);
+            CoreV1Api coreApi = new CoreV1Api(client);
+            V1PodList list = coreApi.listPodForAllNamespaces(null, null, null, null, null, "true", null, null, 60, null);
+            for (V1Pod item : list.getItems()) {
+                System.out.println(item);
+                final V1ObjectMeta metadata = item.getMetadata();
+                final String podsFullName = metadata.getName();
+                if (!podsFullName.equalsIgnoreCase(pod)) {
+                    continue;
+                }
+                Copy copy = new Copy();
+                copy.copyFileToPodAsync(DEFAULT_NAMESPACE, pod, item.getSpec().getContainers().get(0).getName(), xsl.getBytes(), Paths.get(srcPath));
+                return new ResponseEntity<>("pushed new file", HttpStatus.OK);
+            }
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            return new ResponseEntity<>(ExceptionUtils.getStackTrace(e), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return new ResponseEntity<>("Failed to push file in pod " + pod, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @GetMapping("/getNodeInfo")
+    public void printNodeDetails() throws Exception {
+        ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+        Configuration.setDefaultApiClient(client);
+        CoreV1Api api = new CoreV1Api();
+        api.listNode(null, null, null, null, null, null, null, null, 600, null);
+        try {
+            Metrics metrics = new Metrics(client);
+            NodeMetricsList list = metrics.getNodeMetrics();
+            for (NodeMetrics item : list.getItems()) {
+                System.out.println(item.getMetadata().getName());
+                System.out.println("------------------------------");
+                for (String key : item.getUsage().keySet()) {
+                    System.out.println("\t" + key);
+                    System.out.println("\t" + item.getUsage().get(key).toSuffixedString());
+                }
+                System.out.println();
+            }
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+    }
 
 
     private void createDeploymentInfo(DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder, V1Pod item, PodsInfo podsInfo) {
