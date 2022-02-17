@@ -31,6 +31,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -100,9 +101,7 @@ public class Controller {
             }
 
             ArrayList<Object> environmentMsInfo = new ArrayList<>();
-            deploymentInfoBuilderLinkedHashMap.forEach((k, v) -> {
-                environmentMsInfo.add(v.replicas(v.build().getDetails().size()).build());
-            });
+            deploymentInfoBuilderLinkedHashMap.forEach((k, v) -> environmentMsInfo.add(v.replicas(v.build().getDetails().size()).build()));
 
             return ResponseEntity.ok().body(environmentMsInfo);
         } catch (Exception e) {
@@ -239,7 +238,6 @@ public class Controller {
             AppsV1Api appsV1Api = new AppsV1Api();
             final V1DeploymentList v1DeploymentList = appsV1Api.listDeploymentForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
             for (V1Deployment v1Deployment : v1DeploymentList.getItems()) {
-                System.out.println(v1Deployment.getMetadata().getName());
                 if (true) continue;
                 if (serviceName.equalsIgnoreCase(DeploymentInitial.DASHBOARD.name())) {
                     serviceName = serviceName + "-deployment";
@@ -293,7 +291,6 @@ public class Controller {
             CoreV1Api coreApi = new CoreV1Api(client);
             V1PodList list = coreApi.listPodForAllNamespaces(null, null, null, null, null, "true", null, null, 60, null);
             for (V1Pod item : list.getItems()) {
-                System.out.println(item);
                 final V1ObjectMeta metadata = item.getMetadata();
                 final String podsFullName = metadata.getName();
                 if (!podsFullName.equalsIgnoreCase(pod)) {
@@ -336,7 +333,6 @@ public class Controller {
             CoreV1Api coreApi = new CoreV1Api(client);
             V1PodList list = coreApi.listPodForAllNamespaces(null, null, null, null, null, "true", null, null, 60, null);
             for (V1Pod item : list.getItems()) {
-                System.out.println(item);
                 final V1ObjectMeta metadata = item.getMetadata();
                 final String podsFullName = metadata.getName();
                 if (!podsFullName.equalsIgnoreCase(pod)) {
@@ -361,7 +357,7 @@ public class Controller {
             CoreV1Api api = new CoreV1Api();
             final V1NodeList v1NodeList = api.listNode(null, null, null, null, null, null, null, null, 600, null);
             ArrayList<NodeInfo> nodeInfoList = new ArrayList<>();
-            v1NodeList.getItems().forEach((node) -> {
+            v1NodeList.getItems().forEach(node -> {
                 NodeInfo nodeInfo = new NodeInfo();
                 nodeInfo.setNodeName(node.getMetadata().getName());
                 nodeInfo.setCreationTime(node.getMetadata().getCreationTimestamp().toLocalDateTime());
@@ -388,7 +384,7 @@ public class Controller {
     }
 
     @GetMapping("/getConfigMap")
-    public ResponseEntity<String> getConfigMaps(@RequestParam String service, @RequestParam String propertyName) {
+    public ResponseEntity<?> getConfigMaps(@RequestParam String service, @RequestParam String propertyName) {
         try {
             String value = null;
             LocalDateTime localDateTime = LocalDateTime.now();
@@ -400,7 +396,7 @@ public class Controller {
                 final String configMapFullName = v1ConfigMap.getMetadata().getName();
                 if (configMapFullName.contains("-")) {
                     final String name = configMapFullName.substring(0, configMapFullName.indexOf("-"));
-                    if (EnumUtils.isValidEnum(ConfigMapInitial.class, name.toUpperCase())) {
+                    if (EnumUtils.isValidEnum(ConfigMapInitial.class, name.toUpperCase()) && service.equalsIgnoreCase(name)) {
                         if (service.equalsIgnoreCase(name)) {
                             value = v1ConfigMap.getData().get(propertyName.concat(".properties"));
                             localDateTime = v1ConfigMap.getMetadata().getCreationTimestamp().toLocalDateTime();
@@ -410,9 +406,18 @@ public class Controller {
                 }
             }
             if (StringUtils.hasText(value)) {
+                ByteArrayResource resource = new ByteArrayResource(value.getBytes(StandardCharsets.UTF_8));
+
                 HttpHeaders responseHeaders = new HttpHeaders();
+                responseHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+                responseHeaders.setContentDispositionFormData("propertyFile", propertyName.concat(".properties"));
+                responseHeaders.setCacheControl("must-revalidate, post-check=0, pre-check=0");
+                responseHeaders.setContentLength(resource.contentLength());
                 responseHeaders.set("creationTimestamp", localDateTime.toString());
-                return ResponseEntity.ok().headers(responseHeaders).body(value);
+
+                return ResponseEntity.ok()
+                        .headers(responseHeaders)
+                        .body(resource);
             } else {
                 return new ResponseEntity<>("No config map info present for service" + service + " and property " + propertyName, HttpStatus.BAD_REQUEST);
             }
