@@ -33,10 +33,7 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Mono;
@@ -387,6 +384,42 @@ public class Controller {
         } catch (Exception e) {
             log.error(e.getMessage(), e);
             return new ResponseEntity<>("unable to get Node info \n" + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @GetMapping("/getConfigMap")
+    public ResponseEntity<String> getConfigMaps(@RequestParam String service, @RequestParam String propertyName) {
+        try {
+            String value = null;
+            LocalDateTime localDateTime = LocalDateTime.now();
+            ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            Configuration.setDefaultApiClient(client);
+            CoreV1Api api = new CoreV1Api();
+            final V1ConfigMapList v1ConfigMapList = api.listConfigMapForAllNamespaces(null, null, null, null, null, null, null, null, 60, null);
+            for (V1ConfigMap v1ConfigMap : v1ConfigMapList.getItems()) {
+                final String configMapFullName = v1ConfigMap.getMetadata().getName();
+                if (configMapFullName.contains("-")) {
+                    final String name = configMapFullName.substring(0, configMapFullName.indexOf("-"));
+                    if (EnumUtils.isValidEnum(ConfigMapInitial.class, name.toUpperCase())) {
+                        if (service.equalsIgnoreCase(name)) {
+                            value = v1ConfigMap.getData().get(propertyName.concat(".properties"));
+                            localDateTime = v1ConfigMap.getMetadata().getCreationTimestamp().toLocalDateTime();
+                            break;
+                        }
+                    }
+                }
+            }
+            if (StringUtils.hasText(value)) {
+                HttpHeaders responseHeaders = new HttpHeaders();
+                responseHeaders.set("creationTimestamp", localDateTime.toString());
+                return ResponseEntity.ok().headers(responseHeaders).body(value);
+            } else {
+                return new ResponseEntity<>("No config map info present for service" + service + " and property " + propertyName, HttpStatus.BAD_REQUEST);
+            }
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            return new ResponseEntity<>("unable to get config map info for service" + service + " and property " + propertyName + "\n" +
+                    e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
