@@ -1,6 +1,11 @@
 package com.solum.cloud.controller;
 
 import com.azure.core.exception.HttpResponseException;
+import com.azure.core.http.policy.HttpLogDetailLevel;
+import com.azure.core.http.rest.PagedIterable;
+import com.azure.core.management.AzureEnvironment;
+import com.azure.core.management.Region;
+import com.azure.core.management.profile.AzureProfile;
 import com.azure.core.models.ResponseError;
 import com.azure.core.util.Context;
 import com.azure.identity.ClientSecretCredential;
@@ -8,11 +13,15 @@ import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.monitor.query.MetricsQueryClient;
 import com.azure.monitor.query.MetricsQueryClientBuilder;
 import com.azure.monitor.query.models.*;
+import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.compute.models.*;
 import com.solum.cloud.model.metrcis.MetricsResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.text.StringSubstitutor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,9 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.text.DecimalFormat;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.TreeMap;
+import java.util.*;
 
 @Slf4j
 @RestController
@@ -91,10 +98,11 @@ public class MetricController {
         }
     }
 
-    @GetMapping(value = "/getApplicationGatewayMetrcis", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/getApplicationGatewayMetrics", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Object> getApplicationGatewayMetrcis(@RequestParam String metricType,
                                                                @RequestParam String startTime,
                                                                @RequestParam String endTime) {
+
         try {
             ClientSecretCredential clientSecretCredential = new ClientSecretCredentialBuilder()
                     .clientId("716804a0-e246-4ea1-88f6-0417a8f00238")
@@ -243,7 +251,7 @@ public class MetricController {
                             .filter(metricValue -> metricValue.getTotal() != null)
                             .mapToDouble(metricValue -> metricValue.getTotal())
                             .sum();
-                    data.put(metric.getUnit(), df.format(sum/size));
+                    data.put(metric.getUnit(), df.format(sum / size));
                     metricsResponse.setData(data);
                 }
             }
@@ -267,8 +275,8 @@ public class MetricController {
 
     @GetMapping(value = "/getIoTHubMetrics", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Object> getIoTHubMetrics(@RequestParam String metricType,
-                                                    @RequestParam String startTime,
-                                                    @RequestParam String endTime,
+                                                   @RequestParam String startTime,
+                                                   @RequestParam String endTime,
                                                    @RequestParam long granularity) {
         try {
             ClientSecretCredential clientSecretCredential = new ClientSecretCredentialBuilder()
@@ -326,27 +334,37 @@ public class MetricController {
     }
 
     @GetMapping(value = "/getVmMetrics", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Object> getVmMetrics(@RequestParam String metricType,
-                                                   @RequestParam String startTime,
-                                                   @RequestParam String endTime,
-                                                   @RequestParam long granularity) {
+    public ResponseEntity<Object> getVmMetrics(@RequestParam(required = false) String customerCode,
+                                               @RequestParam(required = false) String dbUri,
+                                               @RequestParam(required = false) String mongoUri,
+                                               @RequestParam(required = false) String mongoDb,
+                                               @RequestParam(required = false) String updatePeriod) {
         try {
             ClientSecretCredential clientSecretCredential = new ClientSecretCredentialBuilder()
                     .clientId("716804a0-e246-4ea1-88f6-0417a8f00238")
                     .clientSecret("1Sc8Q~SDIQBpLpQ4Sbho~0dw26EJAq~hI8D~RdaH")
                     .tenantId("ec985fe0-7f27-4ef1-841a-45f87dfb0da9")
                     .build();
-            MetricsQueryClient metricsQueryClient = new MetricsQueryClientBuilder()
+          /*  MetricsQueryClient metricsQueryClient = new MetricsQueryClientBuilder()
                     .credential(clientSecretCredential)
                     .buildClient();
 
-            OffsetDateTime start = OffsetDateTime.parse(startTime);
-            OffsetDateTime end = OffsetDateTime.parse(endTime);
-            final QueryTimeInterval queryTimeInterval = new QueryTimeInterval(start, end);
+            QueryTimeInterval queryTimeInterval;
+            if (StringUtils.hasText(startTime)) {
+                OffsetDateTime start = OffsetDateTime.parse(startTime);
+                OffsetDateTime end = OffsetDateTime.parse(endTime);
+                queryTimeInterval = new QueryTimeInterval(start, end);
+            } else {
+                queryTimeInterval = new QueryTimeInterval(Duration.ofMinutes(1));
+            }
 
             MetricsQueryOptions metricsQueryOptions = new MetricsQueryOptions();
             metricsQueryOptions.setTimeInterval(queryTimeInterval);
-            metricsQueryOptions.setAggregations(AggregationType.TOTAL);
+            if (metricType.equals("Percentage CPU")) {
+                metricsQueryOptions.setAggregations(AggregationType.AVERAGE);
+            } else {
+                metricsQueryOptions.setAggregations(AggregationType.TOTAL);
+            }
             metricsQueryOptions.setGranularity(Duration.ofMinutes(granularity));
 
             MetricsQueryResult metricsQueryResult = metricsQueryClient.queryResourceWithResponse("/subscriptions/888464c6-6e6c-41f1-b6f2-e247a4403e8f/resourceGroups/sti-stage-qa/providers/Microsoft.Compute/virtualMachines/sti-stage-qa-entity-db-01",
@@ -360,7 +378,12 @@ public class MetricController {
                 metricsResponse.setUnit(metric.getUnit());
                 for (TimeSeriesElement timeSeriesElement : metric.getTimeSeries()) {
                     for (MetricValue metricValue : timeSeriesElement.getValues()) {
-                        final Double total = metricValue.getTotal();
+                        Double total;
+                        if (metricsQueryOptions.getAggregations().get(0).equals(AggregationType.AVERAGE)) {
+                            total = metricValue.getAverage();
+                        } else {
+                            total = metricValue.getTotal();
+                        }
                         if (total != null) {
                             System.out.println(metricValue.getTimeStamp() + " " + total);
                         }
@@ -368,14 +391,106 @@ public class MetricController {
                 }
             }
             metricsResponse.setResponseCode(HttpStatus.OK.toString());
-            metricsResponse.setResponseMessage("IoTHub metrics retrieved successfully");
-            return ResponseEntity.ok().body(metricsResponse);
-        } catch (HttpResponseException e) {
-            log.error(e.getMessage(), e);
-            MetricsResponse metricsResponse = new MetricsResponse();
-            metricsResponse.setResponseCode(String.valueOf(e.getResponse().getStatusCode()));
-            metricsResponse.setResponseMessage(((ResponseError) e.getValue()).getMessage());
-            return new ResponseEntity<>(metricsResponse, HttpStatus.valueOf(e.getResponse().getStatusCode()));
+            metricsResponse.setResponseMessage("Azure VM metrics retrieved successfully");
+            return ResponseEntity.ok().body(metricsResponse);*/
+
+            /* AZURE RESOURCE MANAGER CODING */
+            // Please finish 'Set up authentication' step first to set the four environment variables: AZURE_SUBSCRIPTION_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
+            AzureProfile profile = new AzureProfile(AzureEnvironment.AZURE);
+
+            AzureResourceManager azureResourceManager = AzureResourceManager.configure()
+                    .withLogLevel(HttpLogDetailLevel.BASIC)
+                    .authenticate(clientSecretCredential, profile)
+                    .withSubscription("77cfd0cd-235a-4725-a7e3-75ebe73929d8");
+
+            final VirtualMachine vm = azureResourceManager.virtualMachines().getById("/subscriptions/77cfd0cd-235a-4725-a7e3-75ebe73929d8/resourceGroups/ASIA_PROD_RESOURCE1/providers/Microsoft.Compute/virtualMachines/asia-system-maintenance");
+
+            List<String> ar = new ArrayList<>();
+            ar.add("pwd");
+            ar.add("cd ../../../../../../home/solum/maintain/labelStatus/");
+            //ar.add("cp -r WPT " + customerCode);
+            ar.add("cd " + customerCode + "/label-status-process/");
+            ar.add("rm -rf dist/ node_modules/ logs/");
+            ar.add("sudo rm -r env/application.properties.json");
+            String jsonString = getApplicationPropertiesJson(customerCode, dbUri, mongoUri, mongoDb, updatePeriod);
+            ar.add("echo '\"" + jsonString + "\"' >> env/application.properties.json");
+
+//            ar.add("sed -i 's/.*\"DB_URI\".*/  \"DB_URI\": \"" + dbUri + "\",/' env/application.properties.json");
+//            ar.add("sed -i 's/.*\"DB_CUSTOMER_CODE\".*/  \"DB_CUSTOMER_CODE\": \"" + customerCode + "\",/' env/application.properties.json");
+//            ar.add("sed -i 's/.*\"MONGO_URI\".*/  \"MONGO_URI\": \"" + mongoUri + "\",/' env/application.properties.json");
+//            ar.add("sed -i 's/.*\"MONGO_DB\".*/  \"MONGO_DB\": \"" + mongoDb + "\",/' env/application.properties.json");
+//            ar.add("sed -i 's/.*\"MONGO_SRC_COLLECTION\".*/  \"MONGO_SRC_COLLECTION\": \"" + customerCode + ".r_in_out_label_status\",/' env/application.properties.json");
+//            ar.add("sed -i 's/.*\"MONGO_DEST_COLLECTION\".*/  \"MONGO_DEST_COLLECTION\": \"" + customerCode + ".r_label_status\",/' env/application.properties.json");
+//            ar.add("sed -i 's/.*\"STORE_LIST_UPDATE_PERIOD\".*/  \"STORE_LIST_UPDATE_PERIOD\": " + updatePeriod + ",/' env/application.properties.json");
+
+            ar.add("sed -i 's/.*\"name\".*/      \"name\": \"" + customerCode + "\",/' ecosystem.config.json");
+            ar.add("npm install");
+            ar.add("npm run build");
+            ar.add("su solum -s test.sh");
+
+
+            RunCommandInput runCommandInput = new RunCommandInput();
+            runCommandInput.withCommandId("RunShellScript").withScript(ar);
+            final RunCommandResult ls = vm.runCommand(runCommandInput);
+
+            final List<InstanceViewStatus> value = ls.value();
+            StringBuilder sb = new StringBuilder("");
+            value.forEach(val -> {
+                System.out.println(val.message());
+                sb.append(val.message());
+            });
+
+
+            /*
+            final Map<Integer, VirtualMachineDataDisk> integerVirtualMachineDataDiskMap = vm.dataDisks();
+            System.out.println("hardwareProfile");
+            System.out.println("    vmSize: " + vm.size());
+            System.out.println("    publisher: " + vm.storageProfile().imageReference().publisher());
+            System.out.println("    offer: " + vm.storageProfile().imageReference().offer());
+            System.out.println("    sku: " + vm.storageProfile().imageReference().sku());
+            System.out.println("    version: " + vm.storageProfile().imageReference().version());
+
+            final StorageProfile storageProfile = vm.storageProfile();
+            final DataDisk dataDisk = storageProfile.dataDisks().get(0);
+            final Integer diskSizeGB = dataDisk.diskSizeGB();
+            System.out.println(diskSizeGB);
+
+
+
+            System.out.println("networkProfile");
+            System.out.println("    networkInterface: " + vm.primaryNetworkInterfaceId());
+            System.out.println("vmAgent");
+            System.out.println("  vmAgentVersion: " + vm.instanceView().vmAgent().vmAgentVersion());
+
+
+           System.out.println("    statuses");
+            for (InstanceViewStatus status : vm.instanceView().vmAgent().statuses()) {
+                System.out.println("    code: " + status.code());
+                System.out.println("    displayStatus: " + status.displayStatus());
+                System.out.println("    message: " + status.message());
+                System.out.println("    time: " + status.time());
+            }
+            System.out.println("disks");
+            for (DiskInstanceView disk : vm.instanceView().disks()) {
+                System.out.println("  name: " + disk.name());
+                System.out.println("  statuses");
+                for (InstanceViewStatus status : disk.statuses()) {
+                    System.out.println("    code: " + status.code());
+                    System.out.println("    displayStatus: " + status.displayStatus());
+                    System.out.println("    time: " + status.time());
+                }
+            }
+            System.out.println("VM general status");
+            System.out.println("  provisioningStatus: " + vm.provisioningState());
+            System.out.println("  id: " + vm.id());
+            System.out.println("  name: " + vm.name());
+            System.out.println("  type: " + vm.type());
+            System.out.println("VM instance status");
+            for (InstanceViewStatus status : vm.instanceView().statuses()) {
+                System.out.println("  code: " + status.code());
+                System.out.println("  displayStatus: " + status.displayStatus());
+            }*/
+            return ResponseEntity.ok().body(sb.toString());
         } catch (Exception e) {
             log.error(e.getMessage(), e);
             MetricsResponse metricsResponse = new MetricsResponse();
@@ -384,8 +499,110 @@ public class MetricController {
             return new ResponseEntity<>(metricsResponse, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    private String getApplicationPropertiesJson(String customerCode, String dbUri, String mongoUri, String mongoDb, String updatePeriod) {
+        String app_prop_json = "{\n" +
+                "  \"NODE_ENV\": \"development\",\n" +
+                "\n" +
+                "  \"DB_URI\": \"${DB_URI}\",\n" +
+                "  \"DB_CUSTOMER_CODE\": \"${CUSTOMER_CODE}\",\n" +
+                "\n" +
+                "  \"MONGO_URI\": \"${MONGO_URI}\",\n" +
+                "  \"MONGO_DB\": \"${MONGO_DB}\",\n" +
+                "  \"MONGO_SRC_COLLECTION\": \"${CUSTOMER_CODE}.r_in_out_label_status\",\n" +
+                "  \"MONGO_DEST_COLLECTION\": \"${CUSTOMER_CODE}.r_label_status\",\n" +
+                "  \"MONGO_CHECK_PERIOD\": 10,\n" +
+                "\n" +
+                "  \"CONN_POOL_SIZE\": 4000,\n" +
+                "  \"CONN_TIMEOUT\": 600000,\n" +
+                "  \"CONN_REPEAT_COUNT\": 5,\n" +
+                "\n" +
+                "  \"INIT_DEST_COLLECTION\": false,\n" +
+                "\n" +
+                "  \"NUM_PROC_LABEL\": 5,\n" +
+                "  \"NUM_PROC_TASK\": 3,\n" +
+                "  \"NUM_PROC_TASK_GROUP\": 1,\n" +
+                "  \"NUM_CONC_STORE\": 5,\n" +
+                "  \"PROC_CHECK_INTERVAL\": 10,\n" +
+                "  \"STORE_CHECK_INTERVAL\": 10000,\n" +
+                "  \"SCAN_LABELS_TIME_OFFSET\": 30,\n" +
+                "  \"STORE_LIST_UPDATE_PERIOD\": ${STORE_LIST_UPDATE_PERIOD},\n" +
+                "\n" +
+                "  \"SLACK_WEBHOOK_URL\": \"https://hooks.slack.com/services/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\",\n" +
+                "\n" +
+                "  \"LOG_DIR\": \"./logs\",\n" +
+                "  \"LOG_LABEL\": \"LSPRCS\",\n" +
+                "  \"MAX_SIZE_PER_LOG\": 100,\n" +
+                "  \"MAX_NUM_OF_LOG_FILES\": 30\n" +
+                "}";
+        HashMap<String, String> actualValues = new HashMap<>();
+        actualValues.put("DB_URI", dbUri);
+        actualValues.put("CUSTOMER_CODE", "SQATEST");
+        actualValues.put("MONGO_URI", mongoUri);
+        actualValues.put("MONGO_DB", mongoDb);
+        actualValues.put("STORE_LIST_UPDATE_PERIOD", updatePeriod);
+        StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
+        String jsonString = stringSubstitutor.replace(app_prop_json);
+        return jsonString;
+    }
+
+
 }
 
+
+      /*
+        Valid metrics: Percentage CPU
+        -------------------------------------------
+        Network In
+        Network Out
+        Disk Read Bytes
+        Disk Write Bytes
+        Disk Read Operations/Sec
+        Disk Write Operations/Sec
+        CPU Credits Remaining
+        CPU Credits Consumed
+        Data Disk Read Bytes/sec
+        Data Disk Write Bytes/sec
+        Data Disk Read Operations/Sec
+        Data Disk Write Operations/Sec
+        Data Disk Queue Depth
+        Data Disk Bandwidth Consumed Percentage
+        Data Disk IOPS Consumed Percentage
+        Data Disk Target Bandwidth
+        Data Disk Target IOPS
+        Data Disk Max Burst Bandwidth
+        Data Disk Max Burst IOPS
+        Data Disk Used Burst BPS Credits Percentage
+        Data Disk Used Burst IO Credits Percentage
+        OS Disk Read Bytes/sec
+        OS Disk Write Bytes/sec
+        OS Disk Read Operations/Sec
+        OS Disk Write Operations/Sec
+        OS Disk Queue Depth
+        OS Disk Bandwidth Consumed Percentage
+        OS Disk IOPS Consumed Percentage
+        OS Disk Target Bandwidth
+        OS Disk Target IOPS
+        OS Disk Max Burst Bandwidth
+        OS Disk Max Burst IOPS
+        OS Disk Used Burst BPS Credits Percentage
+        OS Disk Used Burst IO Credits Percentage
+        Inbound Flows
+        Outbound Flows
+        Inbound Flows Maximum Creation Rate
+        Outbound Flows Maximum Creation Rate
+        Premium Data Disk Cache Read Hit
+        Premium Data Disk Cache Read Miss
+        Premium OS Disk Cache Read Hit
+        Premium OS Disk Cache Read Miss
+        VM Cached Bandwidth Consumed Percentage
+        VM Cached IOPS Consumed Percentage
+        VM Uncached Bandwidth Consumed Percentage
+        VM Uncached IOPS Consumed Percentage
+        Network In Total
+        Network Out Total
+        Available Memory Bytes
+       */
      /*
         Valid metrics:
         -------------------
