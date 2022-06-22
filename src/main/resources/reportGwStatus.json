@@ -1,0 +1,29 @@
+{
+  "reportGwStatus": {
+    "customerCode": "${CUSTOMER_CODE}",
+    "postgresql": {
+      "uri": "${DB_URI}",
+      "customerCode": "${CUSTOMER_CODE}"
+    },
+    "mongodb": {
+      "uri": "${MONGO_URI}",
+      "db": "${MONGO_DB}",
+      "outputCol": "${CUSTOMER_CODE}.l_report_gateway_status",
+      "sourceCol": "${CUSTOMER_CODE}.l_gateway_status",
+      "connPoolSize": 1000,
+      "connTimeoutMsec": 600000,
+      "connTrialCount": 5,
+      "outputColTTL": 604800
+    },
+    "process": {
+      "prllSize": 1,
+      "execPeriodMinutes": 150,
+      "checkGwOnlineCount": 5,
+      "timeCheckPeriodDays": 2,
+      "initOutputCol": false
+    },
+    "log": {
+      "logLabel": "reportGwStatus"
+    }
+  }
+}

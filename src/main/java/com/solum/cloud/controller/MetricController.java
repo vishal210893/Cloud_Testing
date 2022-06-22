@@ -391,35 +391,69 @@ public class MetricController {
 
             /* AZURE RESOURCE MANAGER CODING */
             // Please finish 'Set up authentication' step first to set the four environment variables: AZURE_SUBSCRIPTION_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
-            AzureProfile profile = new AzureProfile(AzureEnvironment.AZURE);
 
             AzureResourceManager azureResourceManager = AzureResourceManager.configure()
                     .withLogLevel(HttpLogDetailLevel.BASIC)
-                    .authenticate(clientSecretCredential, profile)
+                    .authenticate(clientSecretCredential, new AzureProfile(AzureEnvironment.AZURE))
                     .withSubscription("77cfd0cd-235a-4725-a7e3-75ebe73929d8");
 
             final VirtualMachine vm = azureResourceManager.virtualMachines().getById("/subscriptions/77cfd0cd-235a-4725-a7e3-75ebe73929d8/resourceGroups/ASIA_PROD_RESOURCE1/providers/Microsoft.Compute/virtualMachines/asia-system-maintenance");
 
-            List<String> ar = new ArrayList<>();
-            ar.add("pwd");
-            ar.add("cd ../../../../../../home/solum/maintain/labelStatus/");
-            ar.add("rm -rf " + customerCode);
-            ar.add("cp -r WPT " + customerCode);
-            ar.add("cd " + customerCode + "/label-status-process/");
-            ar.add("rm -rf dist/ node_modules/ logs/");
-            ar.add("sudo rm -r env/application.properties.json");
+            List<String> statisticsCommand = new ArrayList<>();
+            statisticsCommand.add("pwd");
+            statisticsCommand.add("cd ../../../../../../home/solum/maintain/labelStatus/");
+            statisticsCommand.add("rm -rf " + customerCode);
+            statisticsCommand.add("cp -r WPT " + customerCode);
+            statisticsCommand.add("cd " + customerCode + "/label-status-process/");
+            statisticsCommand.add("rm -rf dist/ node_modules/ logs/");
+            statisticsCommand.add("sudo rm -rf env/application.properties.json");
             String jsonString = getApplicationPropertiesJson(customerCode, vmRunCommand.getDbUri(), vmRunCommand.getMongoUri(), vmRunCommand.getMongoDb(), vmRunCommand.getUpdatePeriod());
-            ar.add("echo '" + jsonString + "' >> env/application.properties.json");
-            ar.add("sed -i 's/.*\"name\".*/      \"name\": \"" + customerCode + "\",/' ecosystem.config.json");
-            ar.add("npm install");
-            ar.add("npm run build");
-            ar.add("printf '#!/bin/bash\\npm2 start ecosystem.config.json' >> run.sh");
-            ar.add("chmod 777 run.sh");
-            ar.add("su solum -s run.sh");
-
+            statisticsCommand.add("echo '" + jsonString + "' >> env/application.properties.json");
+            statisticsCommand.add("sed -i 's/.*\"name\".*/      \"name\": \"" + customerCode + "\",/' ecosystem.config.json");
+            statisticsCommand.add("npm install");
+            statisticsCommand.add("npm run build");
+            statisticsCommand.add("printf '#!/bin/bash\\npm2 start ecosystem.config.json' >> run.sh");
+            statisticsCommand.add("chmod 777 run.sh");
+            statisticsCommand.add("su solum -s run.sh");
 
             RunCommandInput runCommandInput = new RunCommandInput();
-            runCommandInput.withCommandId("RunShellScript").withScript(ar);
+            runCommandInput.withCommandId("RunShellScript").withScript(statisticsCommand);
+            /*final RunCommandResult ls = vm.runCommand(runCommandInput);
+
+            final List<InstanceViewStatus> value = ls.value();
+            StringBuilder sb = new StringBuilder("");
+            value.forEach(val -> {
+                System.out.println(val.message());
+                sb.append(val.message());
+            });*/
+
+            List<String> reportCommand = new ArrayList<>();
+            reportCommand.add("pwd");
+            reportCommand.add("cd ../../../../../../home/solum/maintain/reportProcs/");
+            reportCommand.add("rm -rf " + customerCode + "/ slm-report-statistics/ git.sh");
+            reportCommand.add("printf '#!/bin/bash\\ngit clone https://github.com/solumesl/slm-report-statistics.git' >> git.sh");
+            reportCommand.add("chmod 777 git.sh");
+            reportCommand.add("su solum -s git.sh");
+            reportCommand.add("mv slm-report-statistics " + customerCode);
+            reportCommand.add("cd " + customerCode + "/report-process");
+            reportCommand.add("sudo rm -rf ecosystem.config.json");
+            String getEcosystemJson = getEcosystemJson(customerCode);
+            reportCommand.add("echo '" + getEcosystemJson + "' >> ecosystem.config.json");
+            reportCommand.add("sed -i 's/.*\"customerCode\".*/    \"customerCode\": \"" + customerCode + "\",/' config/common.json");
+            reportCommand.add("sudo rm -rf config/reportGwStatus.json config/reportLabelSummary.json");
+            String reportLabelSummaryJson = getReportLabelSummaryJson(customerCode, vmRunCommand.getDbUri(), vmRunCommand.getMongoUri(), vmRunCommand.getMongoDb());
+            reportCommand.add("echo '" + reportLabelSummaryJson + "' >> config/reportLabelSummary.json");
+            String reportGwStatusJson = getReportGwStatusJson(customerCode, vmRunCommand.getDbUri(), vmRunCommand.getMongoUri(), vmRunCommand.getMongoDb());
+            reportCommand.add("echo '" + reportGwStatusJson + "' >> config/reportGwStatus.json");
+            reportCommand.add("npm install");
+            reportCommand.add("npm run build");
+            reportCommand.add("printf '#!/bin/bash\\npm2 start ecosystem.config.json' >> run.sh");
+            reportCommand.add("chmod 777 run.sh");
+            reportCommand.add("su solum -s run.sh");
+
+
+            runCommandInput = new RunCommandInput();
+            runCommandInput.withCommandId("RunShellScript").withScript(reportCommand);
             final RunCommandResult ls = vm.runCommand(runCommandInput);
 
             final List<InstanceViewStatus> value = ls.value();
@@ -428,6 +462,9 @@ public class MetricController {
                 System.out.println(val.message());
                 sb.append(val.message());
             });
+
+
+
 
 
             /*
@@ -532,6 +569,118 @@ public class MetricController {
         actualValues.put("STORE_LIST_UPDATE_PERIOD", updatePeriod);
         StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
         String jsonString = stringSubstitutor.replace(app_prop_json);
+        return jsonString;
+    }
+
+    private String getReportLabelSummaryJson(String customerCode, String dbUri, String mongoUri, String mongoDb) {
+        String reportLabelSummaryJson = "{\n" +
+                "  \"reportLabelSummary\": {\n" +
+                "    \"customerCode\": \"${CUSTOMER_CODE}\",\n" +
+                "    \"postgresql\": {\n" +
+                "      \"uri\": \"${DB_URI}\",\n" +
+                "      \"customerCode\": \"${CUSTOMER_CODE}\"\n" +
+                "    },\n" +
+                "    \"mongodb\": {\n" +
+                "      \"uri\": \"${MONGO_URI}\",\n" +
+                "      \"db\": \"${MONGO_DB}\",\n" +
+                "      \"outputCol\": \"${CUSTOMER_CODE}.l_report_label_summary\",\n" +
+                "      \"sourceCols\": [\n" +
+                "        \"${CUSTOMER_CODE}.l_article_event_hub\",\n" +
+                "        \"${CUSTOMER_CODE}.l_customer_report\",\n" +
+                "        \"${CUSTOMER_CODE}.r_in_out_label_status\",\n" +
+                "        \"${CUSTOMER_CODE}.l_picking_status\"\n" +
+                "      ],\n" +
+                "      \"connPoolSize\": 1000,\n" +
+                "      \"connTimeoutMsec\": 600000,\n" +
+                "      \"connTrialCount\": 5,\n" +
+                "      \"outputColTTL\": 604800\n" +
+                "    },\n" +
+                "    \"process\": {\n" +
+                "      \"execPeriodMinutes\": 150,\n" +
+                "      \"timeCheckPeriodDays\": 2,\n" +
+                "      \"initOutputCol\": false\n" +
+                "    },\n" +
+                "    \"log\": {\n" +
+                "      \"logLabel\": \"reportLabelSummary\"\n" +
+                "    },\n" +
+                "    \"eventTypes\": [\n" +
+                "      \"SCHEDULE\",\n" +
+                "      \"LED\",\n" +
+                "      \"TEMPLATEUPLOAD\",\n" +
+                "      \"ARTICLE\",\n" +
+                "      \"ARTICLEDELETE\",\n" +
+                "      \"ASSIGN\",\n" +
+                "      \"UNASSIGN\",\n" +
+                "      \"IMAGEPUSH\"\n" +
+                "    ]\n" +
+                "  }\n" +
+                "}";
+        HashMap<String, String> actualValues = new HashMap<>();
+        actualValues.put("DB_URI", dbUri);
+        actualValues.put("CUSTOMER_CODE", customerCode);
+        actualValues.put("MONGO_URI", mongoUri);
+        actualValues.put("MONGO_DB", mongoDb);
+        StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
+        String jsonString = stringSubstitutor.replace(reportLabelSummaryJson);
+        return jsonString;
+    }
+
+    private String getReportGwStatusJson(String customerCode, String dbUri, String mongoUri, String mongoDb) {
+        String reportGwStatusJson = "{\n" +
+                "  \"reportGwStatus\": {\n" +
+                "    \"customerCode\": \"${CUSTOMER_CODE}\",\n" +
+                "    \"postgresql\": {\n" +
+                "      \"uri\": \"${DB_URI}\",\n" +
+                "      \"customerCode\": \"${CUSTOMER_CODE}\"\n" +
+                "    },\n" +
+                "    \"mongodb\": {\n" +
+                "      \"uri\": \"${MONGO_URI}\",\n" +
+                "      \"db\": \"${MONGO_DB}\",\n" +
+                "      \"outputCol\": \"${CUSTOMER_CODE}.l_report_gateway_status\",\n" +
+                "      \"sourceCol\": \"${CUSTOMER_CODE}.l_gateway_status\",\n" +
+                "      \"connPoolSize\": 1000,\n" +
+                "      \"connTimeoutMsec\": 600000,\n" +
+                "      \"connTrialCount\": 5,\n" +
+                "      \"outputColTTL\": 604800\n" +
+                "    },\n" +
+                "    \"process\": {\n" +
+                "      \"prllSize\": 1,\n" +
+                "      \"execPeriodMinutes\": 150,\n" +
+                "      \"checkGwOnlineCount\": 5,\n" +
+                "      \"timeCheckPeriodDays\": 2,\n" +
+                "      \"initOutputCol\": false\n" +
+                "    },\n" +
+                "    \"log\": {\n" +
+                "      \"logLabel\": \"reportGwStatus\"\n" +
+                "    }\n" +
+                "  }\n" +
+                "}";
+        HashMap<String, String> actualValues = new HashMap<>();
+        actualValues.put("DB_URI", dbUri);
+        actualValues.put("CUSTOMER_CODE", customerCode);
+        actualValues.put("MONGO_URI", mongoUri);
+        actualValues.put("MONGO_DB", mongoDb);
+        StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
+        String jsonString = stringSubstitutor.replace(reportGwStatusJson);
+        return jsonString;
+    }
+
+
+    private String getEcosystemJson(String customerCode) {
+        String ecoSystemJson = "{\n" +
+                "  \"apps\": [\n" +
+                "    {\n" +
+                "      \"name\": \"report-process-${CUSTOMER_CODE}\",\n" +
+                "      \"namespace\": \"report-process\",\n" +
+                "      \"script\": \"./dist/build/app.js\",\n" +
+                "      \"node_args\": \"--max_old_space_size=2048\"\n" +
+                "    }\n" +
+                "  ]\n" +
+                "}";
+        HashMap<String, String> actualValues = new HashMap<>();
+        actualValues.put("CUSTOMER_CODE", customerCode);
+        StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
+        String jsonString = stringSubstitutor.replace(ecoSystemJson);
         return jsonString;
     }
 

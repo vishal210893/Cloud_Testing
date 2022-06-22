@@ -1,0 +1,42 @@
+{
+  "reportLabelSummary": {
+    "customerCode": "${CUSTOMER_CODE}",
+    "postgresql": {
+      "uri": "${DB_URI}",
+      "customerCode": "${CUSTOMER_CODE}"
+    },
+    "mongodb": {
+      "uri": "${MONGO_URI}",
+      "db": "${MONGO_DB}",
+      "outputCol": "${CUSTOMER_CODE}.l_report_label_summary",
+      "sourceCols": [
+        "${CUSTOMER_CODE}.l_article_event_hub",
+        "${CUSTOMER_CODE}.l_customer_report",
+        "${CUSTOMER_CODE}.r_in_out_label_status",
+        "${CUSTOMER_CODE}.l_picking_status"
+      ],
+      "connPoolSize": 1000,
+      "connTimeoutMsec": 600000,
+      "connTrialCount": 5,
+      "outputColTTL": 604800
+    },
+    "process": {
+      "execPeriodMinutes": 150,
+      "timeCheckPeriodDays": 2,
+      "initOutputCol": false
+    },
+    "log": {
+      "logLabel": "reportLabelSummary"
+    },
+    "eventTypes": [
+      "SCHEDULE",
+      "LED",
+      "TEMPLATEUPLOAD",
+      "ARTICLE",
+      "ARTICLEDELETE",
+      "ASSIGN",
+      "UNASSIGN",
+      "IMAGEPUSH"
+    ]
+  }
+}
