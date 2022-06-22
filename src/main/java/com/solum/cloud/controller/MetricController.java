@@ -407,8 +407,8 @@ public class MetricController {
             statisticsCommand.add("cd " + customerCode + "/label-status-process/");
             statisticsCommand.add("rm -rf dist/ node_modules/ logs/");
             statisticsCommand.add("sudo rm -rf env/application.properties.json");
-            String jsonString = getApplicationPropertiesJson(customerCode, vmRunCommand.getDbUri(), vmRunCommand.getMongoUri(), vmRunCommand.getMongoDb(), vmRunCommand.getUpdatePeriod());
-            statisticsCommand.add("echo '" + jsonString + "' >> env/application.properties.json");
+            String appPropJson = getApplicationPropertiesJson(customerCode, vmRunCommand.getDbUri(), vmRunCommand.getMongoUri(), vmRunCommand.getMongoDb(), vmRunCommand.getUpdatePeriod());
+            statisticsCommand.add("echo '" + appPropJson + "' >> env/application.properties.json");
             statisticsCommand.add("sed -i 's/.*\"name\".*/      \"name\": \"" + customerCode + "\",/' ecosystem.config.json");
             statisticsCommand.add("npm install");
             statisticsCommand.add("npm run build");
@@ -417,15 +417,17 @@ public class MetricController {
             statisticsCommand.add("su solum -s run.sh");
 
             RunCommandInput runCommandInput = new RunCommandInput();
+            RunCommandResult ls = null;
+            List<InstanceViewStatus> value = null;
             runCommandInput.withCommandId("RunShellScript").withScript(statisticsCommand);
-            /*final RunCommandResult ls = vm.runCommand(runCommandInput);
+            ls = vm.runCommand(runCommandInput);
 
-            final List<InstanceViewStatus> value = ls.value();
+            value = ls.value();
             StringBuilder sb = new StringBuilder("");
             value.forEach(val -> {
                 System.out.println(val.message());
                 sb.append(val.message());
-            });*/
+            });
 
             List<String> reportCommand = new ArrayList<>();
             reportCommand.add("pwd");
@@ -454,13 +456,13 @@ public class MetricController {
 
             runCommandInput = new RunCommandInput();
             runCommandInput.withCommandId("RunShellScript").withScript(reportCommand);
-            final RunCommandResult ls = vm.runCommand(runCommandInput);
+            ls = vm.runCommand(runCommandInput);
 
-            final List<InstanceViewStatus> value = ls.value();
-            StringBuilder sb = new StringBuilder("");
+            value = ls.value();
+            StringBuilder sb1 = new StringBuilder("");
             value.forEach(val -> {
                 System.out.println(val.message());
-                sb.append(val.message());
+                sb1.append(val.message());
             });
 
 
@@ -516,7 +518,7 @@ public class MetricController {
                 System.out.println("  code: " + status.code());
                 System.out.println("  displayStatus: " + status.displayStatus());
             }*/
-            return ResponseEntity.ok().body(sb.toString());
+            return ResponseEntity.ok().body(sb.append("\n").append(sb1).toString());
         } catch (Exception e) {
             log.error(e.getMessage(), e);
             MetricsResponse metricsResponse = new MetricsResponse();
@@ -527,7 +529,7 @@ public class MetricController {
     }
 
     private String getApplicationPropertiesJson(String customerCode, String dbUri, String mongoUri, String mongoDb, String updatePeriod) {
-        String app_prop_json = "{\n" +
+        String appPropJson = "{\n" +
                 "  \"NODE_ENV\": \"development\",\n" +
                 "\n" +
                 "  \"DB_URI\": \"${DB_URI}\",\n" +
@@ -561,15 +563,7 @@ public class MetricController {
                 "  \"MAX_SIZE_PER_LOG\": 100,\n" +
                 "  \"MAX_NUM_OF_LOG_FILES\": 30\n" +
                 "}";
-        HashMap<String, String> actualValues = new HashMap<>();
-        actualValues.put("DB_URI", dbUri);
-        actualValues.put("CUSTOMER_CODE", "WPT");
-        actualValues.put("MONGO_URI", mongoUri);
-        actualValues.put("MONGO_DB", mongoDb);
-        actualValues.put("STORE_LIST_UPDATE_PERIOD", updatePeriod);
-        StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
-        String jsonString = stringSubstitutor.replace(app_prop_json);
-        return jsonString;
+        return getModifiedString(customerCode, dbUri, mongoUri, mongoDb, updatePeriod, appPropJson);
     }
 
     private String getReportLabelSummaryJson(String customerCode, String dbUri, String mongoUri, String mongoDb) {
@@ -615,14 +609,8 @@ public class MetricController {
                 "    ]\n" +
                 "  }\n" +
                 "}";
-        HashMap<String, String> actualValues = new HashMap<>();
-        actualValues.put("DB_URI", dbUri);
-        actualValues.put("CUSTOMER_CODE", customerCode);
-        actualValues.put("MONGO_URI", mongoUri);
-        actualValues.put("MONGO_DB", mongoDb);
-        StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
-        String jsonString = stringSubstitutor.replace(reportLabelSummaryJson);
-        return jsonString;
+        return getModifiedString(customerCode, dbUri, mongoUri, mongoDb, null, reportLabelSummaryJson);
+
     }
 
     private String getReportGwStatusJson(String customerCode, String dbUri, String mongoUri, String mongoDb) {
@@ -655,16 +643,9 @@ public class MetricController {
                 "    }\n" +
                 "  }\n" +
                 "}";
-        HashMap<String, String> actualValues = new HashMap<>();
-        actualValues.put("DB_URI", dbUri);
-        actualValues.put("CUSTOMER_CODE", customerCode);
-        actualValues.put("MONGO_URI", mongoUri);
-        actualValues.put("MONGO_DB", mongoDb);
-        StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
-        String jsonString = stringSubstitutor.replace(reportGwStatusJson);
-        return jsonString;
-    }
+        return getModifiedString(customerCode, dbUri, mongoUri, mongoDb, null, reportGwStatusJson);
 
+    }
 
     private String getEcosystemJson(String customerCode) {
         String ecoSystemJson = "{\n" +
@@ -677,10 +658,19 @@ public class MetricController {
                 "    }\n" +
                 "  ]\n" +
                 "}";
+        return getModifiedString(customerCode, null, null, null, null, ecoSystemJson);
+
+    }
+
+    private String getModifiedString(String customerCode, String dbUri, String mongoUri, String mongoDb, String updatePeriod, String rawJsonData) {
         HashMap<String, String> actualValues = new HashMap<>();
+        actualValues.put("DB_URI", dbUri);
         actualValues.put("CUSTOMER_CODE", customerCode);
+        actualValues.put("MONGO_URI", mongoUri);
+        actualValues.put("MONGO_DB", mongoDb);
+        actualValues.put("STORE_LIST_UPDATE_PERIOD", updatePeriod);
         StringSubstitutor stringSubstitutor = new StringSubstitutor(actualValues);
-        String jsonString = stringSubstitutor.replace(ecoSystemJson);
+        String jsonString = stringSubstitutor.replace(rawJsonData);
         return jsonString;
     }
 
