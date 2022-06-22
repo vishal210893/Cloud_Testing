@@ -15,6 +15,7 @@ import com.azure.monitor.query.MetricsQueryClientBuilder;
 import com.azure.monitor.query.models.*;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.compute.models.*;
+import com.solum.cloud.model.VmRunCommand;
 import com.solum.cloud.model.metrcis.MetricsResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.text.StringSubstitutor;
@@ -22,9 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.text.DecimalFormat;
 import java.time.Duration;
@@ -333,12 +332,8 @@ public class MetricController {
         }
     }
 
-    @GetMapping(value = "/getVmMetrics", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Object> getVmMetrics(@RequestParam(required = false) String customerCode,
-                                               @RequestParam(required = false) String dbUri,
-                                               @RequestParam(required = false) String mongoUri,
-                                               @RequestParam(required = false) String mongoDb,
-                                               @RequestParam(required = false) String updatePeriod) {
+    @PostMapping(value = "/getVmMetrics", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Object> getVmMetrics(@RequestParam(required = false) String customerCode, @RequestBody VmRunCommand vmRunCommand) {
         try {
             ClientSecretCredential clientSecretCredential = new ClientSecretCredentialBuilder()
                     .clientId("716804a0-e246-4ea1-88f6-0417a8f00238")
@@ -408,25 +403,19 @@ public class MetricController {
             List<String> ar = new ArrayList<>();
             ar.add("pwd");
             ar.add("cd ../../../../../../home/solum/maintain/labelStatus/");
-            //ar.add("cp -r WPT " + customerCode);
+            ar.add("rm -rf " + customerCode);
+            ar.add("cp -r WPT " + customerCode);
             ar.add("cd " + customerCode + "/label-status-process/");
             ar.add("rm -rf dist/ node_modules/ logs/");
             ar.add("sudo rm -r env/application.properties.json");
-            String jsonString = getApplicationPropertiesJson(customerCode, dbUri, mongoUri, mongoDb, updatePeriod);
-            ar.add("echo '\"" + jsonString + "\"' >> env/application.properties.json");
-
-//            ar.add("sed -i 's/.*\"DB_URI\".*/  \"DB_URI\": \"" + dbUri + "\",/' env/application.properties.json");
-//            ar.add("sed -i 's/.*\"DB_CUSTOMER_CODE\".*/  \"DB_CUSTOMER_CODE\": \"" + customerCode + "\",/' env/application.properties.json");
-//            ar.add("sed -i 's/.*\"MONGO_URI\".*/  \"MONGO_URI\": \"" + mongoUri + "\",/' env/application.properties.json");
-//            ar.add("sed -i 's/.*\"MONGO_DB\".*/  \"MONGO_DB\": \"" + mongoDb + "\",/' env/application.properties.json");
-//            ar.add("sed -i 's/.*\"MONGO_SRC_COLLECTION\".*/  \"MONGO_SRC_COLLECTION\": \"" + customerCode + ".r_in_out_label_status\",/' env/application.properties.json");
-//            ar.add("sed -i 's/.*\"MONGO_DEST_COLLECTION\".*/  \"MONGO_DEST_COLLECTION\": \"" + customerCode + ".r_label_status\",/' env/application.properties.json");
-//            ar.add("sed -i 's/.*\"STORE_LIST_UPDATE_PERIOD\".*/  \"STORE_LIST_UPDATE_PERIOD\": " + updatePeriod + ",/' env/application.properties.json");
-
+            String jsonString = getApplicationPropertiesJson(customerCode, vmRunCommand.getDbUri(), vmRunCommand.getMongoUri(), vmRunCommand.getMongoDb(), vmRunCommand.getUpdatePeriod());
+            ar.add("echo '" + jsonString + "' >> env/application.properties.json");
             ar.add("sed -i 's/.*\"name\".*/      \"name\": \"" + customerCode + "\",/' ecosystem.config.json");
             ar.add("npm install");
             ar.add("npm run build");
-            ar.add("su solum -s test.sh");
+            ar.add("printf '#!/bin/bash\\npm2 start ecosystem.config.json' >> run.sh");
+            ar.add("chmod 777 run.sh");
+            ar.add("su solum -s run.sh");
 
 
             RunCommandInput runCommandInput = new RunCommandInput();
@@ -537,7 +526,7 @@ public class MetricController {
                 "}";
         HashMap<String, String> actualValues = new HashMap<>();
         actualValues.put("DB_URI", dbUri);
-        actualValues.put("CUSTOMER_CODE", "SQATEST");
+        actualValues.put("CUSTOMER_CODE", "WPT");
         actualValues.put("MONGO_URI", mongoUri);
         actualValues.put("MONGO_DB", mongoDb);
         actualValues.put("STORE_LIST_UPDATE_PERIOD", updatePeriod);
