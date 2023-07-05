@@ -34,7 +34,10 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Mono;
@@ -57,7 +60,7 @@ import java.util.zip.ZipOutputStream;
 @RestController
 public class Controller {
 
-    private static final String KUBE_CONFIG_PATH = "C:/Users/SolumTravel/Desktop/config";
+    private static final String KUBE_CONFIG_PATH = "C:/Users/SolumTravel/Desktop/common00config";
     private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#.##");
     public static final String DEFAULT_NAMESPACE = "default";
     private final RestTemplate restTemplate;
@@ -104,6 +107,33 @@ public class Controller {
             deploymentInfoBuilderLinkedHashMap.forEach((k, v) -> environmentMsInfo.add(v.replicas(v.build().getDetails().size()).build()));
 
             return ResponseEntity.ok().body(environmentMsInfo);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            return ResponseEntity.ok().body(ExceptionUtils.getStackTrace(e));
+        }
+    }
+
+    @GetMapping(value = "/getService", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Object> getEndpointService() {
+        try {
+            ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            Configuration.setDefaultApiClient(client);
+            CoreV1Api api = new CoreV1Api();
+            final V1EndpointsList v1EndpointsList = api.listNamespacedEndpoints("default", "true", null, null, null, null, null, null, null, 600, null);
+            final List<V1Endpoints> items = v1EndpointsList.getItems();
+
+            final Map<String, String> ipHostMapping = items.stream()
+                    .filter(item -> item.getMetadata().getName().equals("apiservice-deployment"))
+                    .findFirst()
+                    .map(apiService -> {
+                        final List<V1EndpointSubset> subsets = apiService.getSubsets();
+                        final List<V1EndpointAddress> addresses = subsets.get(0).getAddresses();
+                        final Map<String, String> collect = addresses.stream()
+                                .collect(Collectors.toMap(address -> address.getIp(), address -> address.getTargetRef().getName()));
+                        return collect;
+                    })
+                    .orElse(Collections.emptyMap());
+            return ResponseEntity.ok().body(ipHostMapping);
         } catch (Exception e) {
             log.error(e.getMessage(), e);
             return ResponseEntity.ok().body(ExceptionUtils.getStackTrace(e));
@@ -425,6 +455,50 @@ public class Controller {
             log.error(e.getMessage(), e);
             return new ResponseEntity<>("unable to get config map info for service" + service + " and property " + propertyName + "\n" +
                     e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @GetMapping(value = "/scaleIg", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Object> scaleIg() {
+        try {
+            ApiClient client = ClientBuilder.kubeconfig(KubeConfig.loadKubeConfig(new FileReader(KUBE_CONFIG_PATH))).build();
+            client.setDebugging(true);
+            client.setConnectTimeout(300000);
+            client.setReadTimeout(300000);
+
+            Configuration.setDefaultApiClient(client);
+            Metrics metrics = new Metrics(client);
+            CoreV1Api api = new CoreV1Api();
+
+            LinkedHashMap<String, DeploymentInfo.DeploymentInfoBuilder> deploymentInfoBuilderLinkedHashMap = new LinkedHashMap<>();
+
+            V1PodList list = api.listPodForAllNamespaces(null, null, null, null, null, "true", null, null, 600, null);
+            for (V1Pod item : list.getItems()) {
+                final V1ObjectMeta metadata = item.getMetadata();
+                final String podsFullName = metadata.getName();
+                final String podName = podsFullName.substring(0, podsFullName.indexOf("-"));
+                if (!EnumUtils.isValidEnum(DeploymentInitial.class, podName.toUpperCase()) || podsFullName.contains("dashboard-metrics")) {
+                    continue;
+                }
+                PodsInfo podsInfo = getPodsInfo(metrics, item, podsFullName);
+                final DeploymentInfo.DeploymentInfoBuilder deploymentInfoBuilder;
+                if (deploymentInfoBuilderLinkedHashMap.containsKey(item.getStatus().getContainerStatuses().get(0).getName())) {
+                    deploymentInfoBuilder = deploymentInfoBuilderLinkedHashMap.get(item.getStatus().getContainerStatuses().get(0).getName());
+                } else {
+                    final String name = item.getStatus().getContainerStatuses().get(0).getName();
+                    deploymentInfoBuilderLinkedHashMap.put(name, DeploymentInfo.builder().name(name).details(new ArrayList<>()).resources(new HashMap<>()));
+                    deploymentInfoBuilder = deploymentInfoBuilderLinkedHashMap.get(name);
+                }
+                createDeploymentInfo(deploymentInfoBuilder, item, podsInfo);
+            }
+
+            ArrayList<Object> environmentMsInfo = new ArrayList<>();
+            deploymentInfoBuilderLinkedHashMap.forEach((k, v) -> environmentMsInfo.add(v.replicas(v.build().getDetails().size()).build()));
+
+            return ResponseEntity.ok().body(environmentMsInfo);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            return ResponseEntity.ok().body(ExceptionUtils.getStackTrace(e));
         }
     }
 

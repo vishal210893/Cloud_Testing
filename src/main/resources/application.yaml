@@ -3,7 +3,7 @@ spring:
     name: Cloud Test
 
 server:
-  port: 9015
+  port: 9008
   servlet:
     context-path: /cloudtest
   ssl:
